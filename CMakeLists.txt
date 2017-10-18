@@ -910,3 +910,6 @@ option(WITH_TOOLS "build with tools" ON)
 if(WITH_TOOLS)
   add_subdirectory(tools)
 endif()
+
+# SuRF Test
+add_subdirectory(filter_experiment)
