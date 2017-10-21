@@ -4,6 +4,7 @@
 //  (found in the LICENSE.Apache file in the root directory).
 
 #include <endian.h>
+#include <errno.h>
 #include <time.h>
 #include <cinttypes>
 #include <cstdio>
@@ -18,29 +19,61 @@
 
 #include "rocksdb/db.h"
 #include "rocksdb/filter_policy.h"
-#include "rocksdb/utilities/leveldb_options.h"
-#include "rocksdb/slice.h"
 #include "rocksdb/options.h"
+#include "rocksdb/slice.h"
+#include "rocksdb/table.h"
 
-static std::atomic<uint64_t> read_count;
+//#include "rocksdb/utilities/leveldb_options.h"
 
-void init(const std::string& db_path, rocksdb::DB** db, rocksdb::Options* options,
-	  uint64_t key_count, uint64_t value_size) {
+/*
+void genRandomValue(char* value_buf, int size) {
+    for (int i = 0; i < size; i++)
+	value_buf[i] = rand() % 256;
+}
+*/
+void init(const std::string& db_path, rocksdb::DB** db,
+	  rocksdb::Options* options, rocksdb::BlockBasedTableOptions* table_options,
+	  uint64_t key_count, uint64_t value_size, int filter_type, int compression_type) {
     //const std::string kDBPath = "/home/huanchen/rocksdb_datafiles_no_filter";
     //const std::string kDBPath = "/home/huanchen/rocksdb_datafiles_bloom";
-    const std::string kKeyPath = "/home/huanchen/rocksdb/filter_test/poisson_timestamps.csv";
+    const std::string kKeyPath = "/home/huanchen/rocksdb/filter_experiment/poisson_timestamps.csv";
     char value_buf[value_size];
     memset(value_buf, 0, value_size);
 
-    options->compression = rocksdb::CompressionType::kNoCompression;
-    //options->write_buffer_size = 20 << 64;
-    //options->prefix_extractor = nullptr;
-    //options->max_bytes_for_level_base = 256 * 1048576;
-    //options->max_open_files = -1;
-    //options->use_direct_reads = false;
+    if (filter_type == 1)
+	table_options->filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
+
+    if (table_options->filter_policy == nullptr)
+	std::cout << "Filter DISABLED\n";
+    else
+	std::cout << "Using " << table_options->filter_policy->Name() << "\n";
+
+    if (compression_type == 0) {
+	options->compression = rocksdb::CompressionType::kNoCompression;
+	std::cout << "No Compression\n";
+    } else if (compression_type == 1) {
+	options->compression = rocksdb::CompressionType::kSnappyCompression;
+	std::cout << "Snappy Compression\n";
+    }
+
+    //table_options->block_cache = rocksdb::NewLRUCache(10 * 1048576);
+    table_options->block_cache = rocksdb::NewLRUCache(10 * 1048576, -1, false, 0.5);
+    table_options->cache_index_and_filter_blocks = true;
+
+    options->table_factory.reset(rocksdb::NewBlockBasedTableFactory(*table_options));
+
+    options->max_open_files = 50000;
+    options->write_buffer_size = 2 * 1048576;
+    options->max_bytes_for_level_base = 10 * 1048576;
+    options->target_file_size_base = 2 * 1048576;
+    options->use_direct_reads = true;
+
+    options->statistics = rocksdb::CreateDBStatistics();
 
     //options->create_if_missing = false;
     //options->error_if_exists = false;
+    
+    //options->prefix_extractor = nullptr;
     //options->disable_auto_compactions = false;
     rocksdb::Status status = rocksdb::DB::Open(*options, db_path, db);
     if (!status.ok()) {
@@ -68,6 +101,7 @@ void init(const std::string& db_path, rocksdb::DB** db, rocksdb::Options* option
 	    key = keys[i];
 	    key = htobe64(key);
 	    rocksdb::Slice s_key(reinterpret_cast<const char*>(&key), sizeof(key));
+	    //genRandomValue(value_buf, value_size);
 	    rocksdb::Slice s_value(value_buf, value_size);
 
 	    status = (*db)->Put(rocksdb::WriteOptions(), s_key, s_value);
@@ -76,7 +110,7 @@ void init(const std::string& db_path, rocksdb::DB** db, rocksdb::Options* option
 		assert(false);
 	    }
 
-	    if (i % (key_count / 10000) == 0)
+	    if (i % (key_count / 100) == 0)
 		std::cout << i << "/" << key_count << " [" << ((i + 0.0)/(key_count + 0.0) * 100.) << "]\n";
 	}
 
@@ -86,9 +120,8 @@ void init(const std::string& db_path, rocksdb::DB** db, rocksdb::Options* option
     }
 }
 
-void close(rocksdb::DB* db, rocksdb::LevelDBOptions* level_options) {
+void close(rocksdb::DB* db) {
     delete db;
-    delete level_options->filter_policy;
 }
 
 void warmup(rocksdb::DB* db, uint64_t key_count, uint64_t key_gap, uint64_t query_count) {
@@ -283,21 +316,12 @@ void benchClosedRangeQuery(rocksdb::DB* db, uint64_t key_count, uint64_t key_gap
     delete it;
 }
 */
-void printFreeMem() {
-    FILE* fp = fopen("/proc/meminfo", "r");
-    char buf[4096];
-    for (int i = 0; i < 4; i++) {
-	if (fgets(buf, sizeof(buf), fp) != NULL)
-	    printf("%s", buf);
-    }
-    fclose(fp);
-    printf("\n");
-}
 
 void printIO() {
     FILE* fp = fopen("/sys/block/sda/sda2/stat", "r");
     if (fp == NULL) {
 	printf("Error: empty fp\n");
+	printf("%s\n", strerror(errno));
 	return;
     }
     char buf[4096];
@@ -308,22 +332,27 @@ void printIO() {
 }
 
 int main(int argc, const char* argv[]) {
-    if (argc < 3) {
+    if (argc < 4) {
 	std::cout << "Usage:\n";
 	std::cout << "arg 1: path to datafiles\n";
 	std::cout << "arg 2: filter type\n";
 	std::cout << "\t0: no filter\n";
 	std::cout << "\t1: Bloom filter\n";
 	//std::cout << "\t2: SuRF\n";
+	std::cout << "arg 3: compression?\n";
+	std::cout << "\t0: no compression\n";
+	std::cout << "\t1: Snappy\n";
 	return -1;
     }
 
     std::string db_path = std::string(argv[1]);
     int filter_type = atoi(argv[2]);
+    int compression_type = atoi(argv[3]);
     uint64_t scan_length = 1;
     uint64_t range_size = 100000;
 
-    const uint64_t kKeyCount = 100000000;
+    //const uint64_t kKeyCount = 100000000;
+    const uint64_t kKeyCount = 2000000;
     const uint64_t kValueSize = 1000;
     const uint64_t kKeyGap = 100000;
 
@@ -333,6 +362,9 @@ int main(int argc, const char* argv[]) {
     //=========================================================================
     
     rocksdb::DB* db;
+    rocksdb::Options options;
+    rocksdb::BlockBasedTableOptions table_options;
+    /*
     rocksdb::LevelDBOptions level_options;
 
     if (filter_type == 1)
@@ -344,26 +376,30 @@ int main(int argc, const char* argv[]) {
 	std::cout << "Using " << level_options.filter_policy->Name() << "\n";
     
     rocksdb::Options options = rocksdb::ConvertOptions(level_options);
-    init(db_path, &db, &options, kKeyCount, kValueSize);
+    */
+    
+    init(db_path, &db, &options, &table_options, kKeyCount, kValueSize, filter_type, compression_type);
 
     //=========================================================================
     
-    uint64_t current_read_count = read_count;
-
+    std::cout << options.statistics->ToString() << "\n";
+    printIO();
     warmup(db, kKeyCount, kKeyGap, kWarmupQueryCount);
-    std::cout << "read_count = " << (static_cast<double>(read_count - current_read_count) / kWarmupQueryCount) << " per op\n\n";
+    //std::cout << "read_count = " << (static_cast<double>(read_count - current_read_count) / kWarmupQueryCount) << " per op\n\n";
 
+    std::cout << options.statistics->ToString() << "\n";
     printIO();
     benchPointQuery(db, kKeyCount, kKeyGap, kQueryCount);
     //benchOpenRangeQuery(db, kKeyCount, kKeyGap, kQueryCount, scan_length);
     //benchClosedRangeQuery(db, kKeyCount, kKeyGap, kQueryCount, range_size);
+    
+    std::cout << options.statistics->ToString() << "\n";
+    //std::string stats;
+    //db->GetProperty(rocksdb::Slice("rocksdb.stats"), &stats);
+    //std::cout << stats << "\n";
     printIO();
 
-    std::cout << "read_count = " << (static_cast<double>(read_count - current_read_count) / kWarmupQueryCount) << " per op\n\n";
-    
-    //printFreeMem();
-    
-    close(db, &level_options);
+    close(db);
 
     return 0;
 }
