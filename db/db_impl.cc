@@ -182,8 +182,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname)
       unable_to_flush_oldest_log_(false),
       env_options_(BuildDBOptions(immutable_db_options_, mutable_db_options_)),
       env_options_for_compaction_(env_->OptimizeForCompactionTableWrite(
-                                    env_options_,
-                                    immutable_db_options_)),
+          env_options_, immutable_db_options_)),
       num_running_ingest_file_(0),
 #ifndef ROCKSDB_LITE
       wal_manager_(immutable_db_options_, env_options_),
@@ -195,7 +194,9 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname)
       opened_successfully_(false),
       concurrent_prepare_(options.concurrent_prepare),
       manual_wal_flush_(options.manual_wal_flush),
-      seq_per_batch_(options.seq_per_batch) {
+      seq_per_batch_(options.seq_per_batch),
+      // TODO(myabandeh): revise this when we change options.seq_per_batch
+      use_custom_gc_(options.seq_per_batch) {
   env_->GetAbsolutePath(dbname, &db_absolute_path_);
 
   // Reserve ten files or so for other uses and give the rest to TableCache.
@@ -573,10 +574,6 @@ Status DBImpl::SetDBOptions(
       env_options_for_compaction_ = env_->OptimizeForCompactionTableWrite(
                                             env_options_for_compaction_,
                                             immutable_db_options_);
-      env_options_for_compaction_.bytes_per_sync
-                                    = mutable_db_options_.bytes_per_sync;
-      env_->OptimizeForCompactionTableWrite(env_options_for_compaction_,
-                                            immutable_db_options_);
       write_thread_.EnterUnbatched(&w, &mutex_);
       if (total_log_size_ > GetMaxTotalWalSize() || wal_changed) {
         Status purge_wal_status = SwitchWAL(&write_context);
@@ -894,6 +891,7 @@ InternalIterator* DBImpl::NewInternalIterator(
                                                          range_del_agg);
     }
   }
+  TEST_SYNC_POINT_CALLBACK("DBImpl::NewInternalIterator:StatusCallback", &s);
   if (s.ok()) {
     // Collect iterators for files in L0 - Ln
     if (read_options.read_tier != kMemtableTier) {
@@ -907,8 +905,10 @@ InternalIterator* DBImpl::NewInternalIterator(
     internal_iter->RegisterCleanup(CleanupIteratorState, cleanup, nullptr);
 
     return internal_iter;
+  } else {
+    CleanupSuperVersion(super_version);
   }
-  return NewErrorInternalIterator(s);
+  return NewErrorInternalIterator(s, arena);
 }
 
 ColumnFamilyHandle* DBImpl::DefaultColumnFamily() const {
@@ -1407,6 +1407,7 @@ bool DBImpl::KeyMayExist(const ReadOptions& read_options,
 
 Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
                               ColumnFamilyHandle* column_family) {
+  Iterator* result = nullptr;
   if (read_options.read_tier == kPersistedTier) {
     return NewErrorIterator(Status::NotSupported(
         "ReadTier::kPersistedData is not yet supported in iterators."));
@@ -1417,25 +1418,27 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
   if (read_options.managed) {
 #ifdef ROCKSDB_LITE
     // not supported in lite version
-    return NewErrorIterator(Status::InvalidArgument(
+    result =  NewErrorIterator(Status::InvalidArgument(
         "Managed Iterators not supported in RocksDBLite."));
 #else
     if ((read_options.tailing) || (read_options.snapshot != nullptr) ||
         (is_snapshot_supported_)) {
-      return new ManagedIterator(this, read_options, cfd);
-    }
-    // Managed iter not supported
-    return NewErrorIterator(Status::InvalidArgument(
+      result = new ManagedIterator(this, read_options, cfd);
+    } else {
+      // Managed iter not supported
+      result = NewErrorIterator(Status::InvalidArgument(
         "Managed Iterators not supported without snapshots."));
+    }
 #endif
   } else if (read_options.tailing) {
 #ifdef ROCKSDB_LITE
     // not supported in lite version
-    return nullptr;
+    result = nullptr;
+
 #else
     SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
     auto iter = new ForwardIterator(this, read_options, cfd, sv);
-    return NewDBIterator(
+    result = NewDBIterator(
         env_, read_options, *cfd->ioptions(), cfd->user_comparator(), iter,
         kMaxSequenceNumber,
         sv->mutable_cf_options.max_sequential_skip_in_iterations,
@@ -1445,10 +1448,9 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
     auto snapshot = read_options.snapshot != nullptr
                         ? read_options.snapshot->GetSequenceNumber()
                         : versions_->LastSequence();
-    return NewIteratorImpl(read_options, cfd, snapshot, read_callback);
+    result = NewIteratorImpl(read_options, cfd, snapshot, read_callback);
   }
-  // To stop compiler from complaining
-  return nullptr;
+  return result;
 }
 
 ArenaWrappedDBIter* DBImpl::NewIteratorImpl(const ReadOptions& read_options,
@@ -1819,21 +1821,23 @@ SuperVersion* DBImpl::GetAndRefSuperVersion(uint32_t column_family_id) {
   return GetAndRefSuperVersion(cfd);
 }
 
+void DBImpl::CleanupSuperVersion(SuperVersion* sv) {
+  // Release SuperVersion
+  if (sv->Unref()) {
+    {
+      InstrumentedMutexLock l(&mutex_);
+      sv->Cleanup();
+    }
+    delete sv;
+    RecordTick(stats_, NUMBER_SUPERVERSION_CLEANUPS);
+  }
+  RecordTick(stats_, NUMBER_SUPERVERSION_RELEASES);
+}
+
 void DBImpl::ReturnAndCleanupSuperVersion(ColumnFamilyData* cfd,
                                           SuperVersion* sv) {
-  bool unref_sv = !cfd->ReturnThreadLocalSuperVersion(sv);
-
-  if (unref_sv) {
-    // Release SuperVersion
-    if (sv->Unref()) {
-      {
-        InstrumentedMutexLock l(&mutex_);
-        sv->Cleanup();
-      }
-      delete sv;
-      RecordTick(stats_, NUMBER_SUPERVERSION_CLEANUPS);
-    }
-    RecordTick(stats_, NUMBER_SUPERVERSION_RELEASES);
+  if (!cfd->ReturnThreadLocalSuperVersion(sv)) {
+    CleanupSuperVersion(sv);
   }
 }
 
@@ -2551,7 +2555,8 @@ SequenceNumber DBImpl::GetEarliestMemTableSequenceNumber(SuperVersion* sv,
 #ifndef ROCKSDB_LITE
 Status DBImpl::GetLatestSequenceForKey(SuperVersion* sv, const Slice& key,
                                        bool cache_only, SequenceNumber* seq,
-                                       bool* found_record_for_key) {
+                                       bool* found_record_for_key,
+                                       bool* is_blob_index) {
   Status s;
   MergeContext merge_context;
   RangeDelAggregator range_del_agg(sv->mem->GetInternalKeyComparator(),
@@ -2566,7 +2571,7 @@ Status DBImpl::GetLatestSequenceForKey(SuperVersion* sv, const Slice& key,
 
   // Check if there is a record for this key in the latest memtable
   sv->mem->Get(lkey, nullptr, &s, &merge_context, &range_del_agg, seq,
-               read_options);
+               read_options, nullptr /*read_callback*/, is_blob_index);
 
   if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
     // unexpected error reading memtable.
@@ -2585,7 +2590,7 @@ Status DBImpl::GetLatestSequenceForKey(SuperVersion* sv, const Slice& key,
 
   // Check if there is a record for this key in the immutable memtables
   sv->imm->Get(lkey, nullptr, &s, &merge_context, &range_del_agg, seq,
-               read_options);
+               read_options, nullptr /*read_callback*/, is_blob_index);
 
   if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
     // unexpected error reading memtable.
@@ -2604,7 +2609,7 @@ Status DBImpl::GetLatestSequenceForKey(SuperVersion* sv, const Slice& key,
 
   // Check if there is a record for this key in the immutable memtables
   sv->imm->GetFromHistory(lkey, nullptr, &s, &merge_context, &range_del_agg,
-                          seq, read_options);
+                          seq, read_options, is_blob_index);
 
   if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
     // unexpected error reading memtable.
@@ -2628,7 +2633,8 @@ Status DBImpl::GetLatestSequenceForKey(SuperVersion* sv, const Slice& key,
     // Check tables
     sv->current->Get(read_options, lkey, nullptr, &s, &merge_context,
                      &range_del_agg, nullptr /* value_found */,
-                     found_record_for_key, seq);
+                     found_record_for_key, seq, nullptr /*read_callback*/,
+                     is_blob_index);
 
     if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
       // unexpected error reading SST files
