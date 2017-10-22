@@ -146,7 +146,15 @@ class FilterPolicy {
 // FilterPolicy (like NewBloomFilterPolicy) that does not ignore
 // trailing spaces in keys.
 extern const FilterPolicy* NewBloomFilterPolicy(int bits_per_key,
-    bool use_block_based_builder = true);
+						bool use_block_based_builder = true);
+
+// huanchen
+// suffix_type: 0 (no suffix), 1 (hash), 2(real)
+extern const FilterPolicy* NewSuRFPolicy(int suffix_type = 0,
+					 uint32_t suffix_len = 0,
+					 bool include_dense = true,
+					 uint32_t sparse_dense_ratio = 16,
+					 bool use_block_based_builder = true);
 }
 
 #endif  // STORAGE_ROCKSDB_INCLUDE_FILTER_POLICY_H_
