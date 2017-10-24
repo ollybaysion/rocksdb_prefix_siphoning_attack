@@ -42,6 +42,8 @@ void init(const std::string& db_path, rocksdb::DB** db,
 
     if (filter_type == 1)
 	table_options->filter_policy.reset(rocksdb::NewBloomFilterPolicy(10, false));
+    else if (filter_type == 2)
+	table_options->filter_policy.reset(rocksdb::NewSuRFPolicy(0, 0, true, 16, false));
 
     if (table_options->filter_policy == nullptr)
 	std::cout << "Filter DISABLED\n";
@@ -122,6 +124,51 @@ void init(const std::string& db_path, rocksdb::DB** db,
 
 void close(rocksdb::DB* db) {
     delete db;
+}
+
+void testScan(rocksdb::DB* db, uint64_t key_count) {
+    const std::string kKeyPath = "/home/huanchen/rocksdb/filter_experiment/poisson_timestamps.csv";
+
+    std::cout << "testScan: loading timestamp keys\n";
+    std::ifstream keyFile(kKeyPath);
+    std::vector<uint64_t> keys;
+
+    uint64_t key = 0;
+    for (uint64_t i = 0; i < key_count; i++) {
+	keyFile >> key;
+	keys.push_back(key);
+    }
+    
+    struct timespec ts_start;
+    struct timespec ts_end;
+    uint64_t elapsed;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts_start);
+
+    for (uint64_t i = 0; i < key_count; i++) {
+	key = htobe64(keys[i]);
+
+	rocksdb::Slice s_key(reinterpret_cast<const char*>(&key), sizeof(key));
+	std::string s_value;
+	uint64_t value;
+
+	rocksdb::Status status = db->Get(rocksdb::ReadOptions(), s_key, &s_value);
+
+	if (status.ok()) {
+	    assert(s_value.size() >= sizeof(uint64_t));
+	    value = *reinterpret_cast<const uint64_t*>(s_value.data());
+	    (void)value;
+	}
+    }
+    
+    clock_gettime(CLOCK_MONOTONIC, &ts_end);
+    elapsed = static_cast<uint64_t>(ts_end.tv_sec) * 1000000000UL +
+	static_cast<uint64_t>(ts_end.tv_nsec) -
+	static_cast<uint64_t>(ts_start.tv_sec) * 1000000000UL +
+	static_cast<uint64_t>(ts_start.tv_nsec);
+
+    std::cout << "elapsed:    " << (static_cast<double>(elapsed) / 1000000000.) << "\n";
+    std::cout << "throughput: " << (static_cast<double>(key_count) / (static_cast<double>(elapsed) / 1000000000.)) << "\n";
 }
 
 void warmup(rocksdb::DB* db, uint64_t key_count, uint64_t key_gap, uint64_t query_count) {
@@ -338,7 +385,7 @@ int main(int argc, const char* argv[]) {
 	std::cout << "arg 2: filter type\n";
 	std::cout << "\t0: no filter\n";
 	std::cout << "\t1: Bloom filter\n";
-	//std::cout << "\t2: SuRF\n";
+	std::cout << "\t2: SuRF\n";
 	std::cout << "arg 3: compression?\n";
 	std::cout << "\t0: no compression\n";
 	std::cout << "\t1: Snappy\n";
@@ -381,19 +428,21 @@ int main(int argc, const char* argv[]) {
     init(db_path, &db, &options, &table_options, kKeyCount, kValueSize, filter_type, compression_type);
 
     //=========================================================================
+
+    //testScan(db, kKeyCount);
     
-    std::cout << options.statistics->ToString() << "\n";
+    //std::cout << options.statistics->ToString() << "\n";
     printIO();
     warmup(db, kKeyCount, kKeyGap, kWarmupQueryCount);
     //std::cout << "read_count = " << (static_cast<double>(read_count - current_read_count) / kWarmupQueryCount) << " per op\n\n";
 
-    std::cout << options.statistics->ToString() << "\n";
+    //std::cout << options.statistics->ToString() << "\n";
     printIO();
     benchPointQuery(db, kKeyCount, kKeyGap, kQueryCount);
     //benchOpenRangeQuery(db, kKeyCount, kKeyGap, kQueryCount, scan_length);
     //benchClosedRangeQuery(db, kKeyCount, kKeyGap, kQueryCount, range_size);
     
-    std::cout << options.statistics->ToString() << "\n";
+    //std::cout << options.statistics->ToString() << "\n";
     //std::string stats;
     //db->GetProperty(rocksdb::Slice("rocksdb.stats"), &stats);
     //std::cout << stats << "\n";
