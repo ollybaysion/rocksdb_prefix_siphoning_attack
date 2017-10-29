@@ -25,6 +25,8 @@
 #include "util/stop_watch.h"
 #include "util/sync_point.h"
 
+#include <iostream>
+
 namespace rocksdb {
 // Without anonymous namespace here, we fail the warning -Wmissing-prototypes
 namespace {
@@ -105,8 +107,15 @@ class MergingIterator : public InternalIterator {
   }
 
   virtual void Seek(const Slice& target) override {
+      // huanchen
+      std::vector<int> min_indexes;
+      FilterChildrenForward(target, min_indexes);
+
     ClearHeaps();
-    for (auto& child : children_) {
+    //for (auto& child : children_) { // ori
+    for (int i = 0; i < (int)min_indexes.size(); i++) { // huanchen
+	int idx = min_indexes[i]; // huanchen
+	auto& child = children_[idx]; // huanchen
       {
         PERF_TIMER_GUARD(seek_child_seek_time);
         child.Seek(target);
@@ -315,6 +324,78 @@ class MergingIterator : public InternalIterator {
   // forward.  Lazily initialize it to save memory.
   std::unique_ptr<MergerMaxIterHeap> maxHeap_;
   PinnedIteratorsManager* pinned_iters_mgr_;
+
+    // huanchen
+    // helper
+    bool isPrefix(const std::string& a, const std::string& b) {
+	size_t min_size = a.size();
+	if (b.size() < min_size)
+	    min_size = b.size();
+	/*
+	std::cout << "a.size() = " << a.size() << "\n";
+
+	std::cout << "a = ";
+	for (int j = 0; j < (int)a.size(); j++)
+	    std::cout << std::hex << (uint16_t)a[j] << " ";
+	std::cout << std::dec << "\n";
+
+	std::cout << "b = ";
+	for (int j = 0; j < (int)b.size(); j++)
+	    std::cout << std::hex << (uint16_t)b[j] << " ";
+	std::cout << std::dec << "\n";
+
+	std::cout << "cmp = " << memcmp(a.data(), b.data(), min_size) << "\n";
+	*/
+	return (memcmp(a.data(), b.data(), min_size) == 0);
+    }
+
+    // huanchen
+    void FilterChildrenForward(const Slice& target, std::vector<int>& min_indexes) {
+	std::string filter_key_min;
+	std::vector<int> no_filter_indexes;
+	for (int idx = 0; idx < (int)children_.size(); idx++) {
+	    auto& child = children_[idx];
+	    std::string filter_key_cur = child.FilterSeek(target).ToString();
+	    /*
+	    std::cout << "\tidx = " << idx << "\t";
+	    std::cout << "filter_key_cur.size() = " << filter_key_cur.size() << "\t";
+	    for (int j = 0; j < (int)filter_key_cur.size(); j++)
+		std::cout << std::hex << (uint16_t)filter_key_cur[j] << " ";
+	    std::cout << std::dec << "\n";
+	    */
+	    if (filter_key_cur.size() == 0) {
+		no_filter_indexes.push_back(idx);
+		continue;
+	    }
+	    
+	    if (filter_key_min.size() == 0) {
+		filter_key_min = filter_key_cur;
+		min_indexes.push_back(idx);
+	    } else if (isPrefix(filter_key_cur, filter_key_min)) {
+		min_indexes.push_back(idx);
+	    } else if (filter_key_cur.compare(filter_key_min) < 0) {
+		filter_key_min = filter_key_cur;
+		min_indexes.clear();
+		min_indexes.push_back(idx);
+	    }
+	    /*
+	    std::cout << "filter_key_min = ";
+	    for (int j = 0; j < (int)filter_key_min.size(); j++)
+		std::cout << std::hex << (uint16_t)filter_key_min[j] << " ";
+	    std::cout << std::dec << "\n";
+
+	    std::cout << "min indexes: ";
+	    for (int k = 0; k < (int)min_indexes.size(); k++) {
+		std::cout << min_indexes[k] << " ";
+	    }
+	    std::cout << "\n";
+	    */
+	}
+
+	for (int i = 0; i < (int)no_filter_indexes.size(); i++)
+	    min_indexes.push_back(no_filter_indexes[i]);
+	
+    }
 
   void SwitchToForward();
 

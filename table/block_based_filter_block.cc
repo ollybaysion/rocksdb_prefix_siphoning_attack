@@ -16,6 +16,8 @@
 #include "util/coding.h"
 #include "util/string_util.h"
 
+#include <iostream>
+
 namespace rocksdb {
 
 namespace {

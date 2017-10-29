@@ -240,11 +240,18 @@ class BlockBasedTable : public TableReader {
                                           CachableEntry<Block>* block_entry,
                                           bool is_index = false);
 
+  // huanchen
+ public:
+  
   // For the following two functions:
   // if `no_io == true`, we will not try to read filter/index from sst file
   // were they not present in cache yet.
   CachableEntry<FilterBlockReader> GetFilter(
       FilePrefetchBuffer* prefetch_buffer = nullptr, bool no_io = false) const;
+
+  // huanchen
+ private:
+  
   virtual CachableEntry<FilterBlockReader> GetFilter(
       FilePrefetchBuffer* prefetch_buffer, const BlockHandle& filter_blk_handle,
       const bool is_a_filter_partition, bool no_io) const;
@@ -350,30 +357,6 @@ class BlockBasedTable : public TableReader {
   friend class PartitionedFilterBlockTest;
 };
 
-// Maitaning state of a two-level iteration on a partitioned index structure
-class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
- public:
-  BlockEntryIteratorState(
-      BlockBasedTable* table, const ReadOptions& read_options,
-      const InternalKeyComparator* icomparator, bool skip_filters,
-      bool is_index = false,
-      std::unordered_map<uint64_t, CachableEntry<Block>>* block_map = nullptr);
-  InternalIterator* NewSecondaryIterator(const Slice& index_value) override;
-  bool PrefixMayMatch(const Slice& internal_key) override;
-  bool KeyReachedUpperBound(const Slice& internal_key) override;
-
- private:
-  // Don't own table_
-  BlockBasedTable* table_;
-  const ReadOptions read_options_;
-  const InternalKeyComparator* icomparator_;
-  bool skip_filters_;
-  // true if the 2nd level iterator is on indexes instead of on user data.
-  bool is_index_;
-  std::unordered_map<uint64_t, CachableEntry<Block>>* block_map_;
-  port::RWMutex cleaner_mu;
-};
-
 // CachableEntry represents the entries that *may* be fetched from block cache.
 //  field `value` is the item we want to get.
 //  field `cache_handle` is the cache handle to the block cache. If the value
@@ -395,6 +378,35 @@ struct BlockBasedTable::CachableEntry {
   TValue* value = nullptr;
   // if the entry is from the cache, cache_handle will be populated.
   Cache::Handle* cache_handle = nullptr;
+};
+
+// Maitaning state of a two-level iteration on a partitioned index structure
+class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
+ public:
+  BlockEntryIteratorState(
+      BlockBasedTable* table, const ReadOptions& read_options,
+      const InternalKeyComparator* icomparator, bool skip_filters,
+      bool is_index = false,
+      std::unordered_map<uint64_t, CachableEntry<Block>>* block_map = nullptr);
+  InternalIterator* NewSecondaryIterator(const Slice& index_value) override;
+  bool PrefixMayMatch(const Slice& internal_key) override;
+  bool KeyReachedUpperBound(const Slice& internal_key) override;
+
+  // huanchen
+  FilterBlockReader* GetFilterBlockReader(const Slice& handle) override {
+      return table_->GetFilter(nullptr, read_options_.read_tier == kBlockCacheTier /* no_io */).value;
+  }
+
+ private:
+  // Don't own table_
+  BlockBasedTable* table_;
+  const ReadOptions read_options_;
+  const InternalKeyComparator* icomparator_;
+  bool skip_filters_;
+  // true if the 2nd level iterator is on indexes instead of on user data.
+  bool is_index_;
+  std::unordered_map<uint64_t, CachableEntry<Block>>* block_map_;
+  port::RWMutex cleaner_mu;
 };
 
 struct BlockBasedTable::Rep {

@@ -15,6 +15,14 @@
 #include "table/format.h"
 #include "util/arena.h"
 
+// huanchen
+#include "table/filter_block.h"
+#include "table/table_reader.h"
+//#include "table/block_based_table_reader.h"
+#include "db/version_edit.h"
+
+#include <iostream>
+
 namespace rocksdb {
 
 namespace {
@@ -39,6 +47,7 @@ class TwoLevelIterator : public InternalIterator {
     }
   }
 
+  virtual Slice FilterSeek(const Slice& target) override; // huanchen
   virtual void Seek(const Slice& target) override;
   virtual void SeekForPrev(const Slice& target) override;
   virtual void SeekToFirst() override;
@@ -91,6 +100,7 @@ class TwoLevelIterator : public InternalIterator {
   void SkipEmptyDataBlocksBackward();
   void SetSecondLevelIterator(InternalIterator* iter);
   void InitDataBlock();
+  bool InitFilterBlockReader(); // huanchen
 
   TwoLevelIteratorState* state_;
   IteratorWrapper first_level_iter_;
@@ -101,6 +111,9 @@ class TwoLevelIterator : public InternalIterator {
   // If second_level_iter is non-nullptr, then "data_block_handle_" holds the
   // "index_value" passed to block_function_ to create the second_level_iter.
   std::string data_block_handle_;
+
+  FilterBlockReader* filter_block_reader_; // huanchen
+
 };
 
 TwoLevelIterator::TwoLevelIterator(TwoLevelIteratorState* state,
@@ -111,6 +124,22 @@ TwoLevelIterator::TwoLevelIterator(TwoLevelIteratorState* state,
       need_free_iter_and_state_(need_free_iter_and_state),
       pinned_iters_mgr_(nullptr) {}
 
+// huanchen
+Slice TwoLevelIterator::FilterSeek(const Slice& target) {
+    /*
+    std::cout << "target = ";
+    for (int i = 0; i < (int)target.size(); i++)
+	std::cout << std::hex << (uint16_t)target.data()[i] << " ";
+    std::cout << std::dec << "\n";
+    */
+    first_level_iter_.Seek(target);
+    
+    if (!InitFilterBlockReader() || filter_block_reader_ == nullptr) {
+	return Slice();
+    }
+    return filter_block_reader_->Seek(target);
+}
+    
 void TwoLevelIterator::Seek(const Slice& target) {
   if (state_->check_prefix_may_match &&
       !state_->PrefixMayMatch(target)) {
@@ -246,6 +275,30 @@ void TwoLevelIterator::InitDataBlock() {
       SetSecondLevelIterator(iter);
     }
   }
+}
+
+// huanchen
+bool TwoLevelIterator::InitFilterBlockReader() {
+    if (!first_level_iter_.Valid()) {
+	filter_block_reader_ = nullptr;
+	return false;
+    } else {
+	Slice handle = first_level_iter_.value();
+	if (handle.size() != sizeof(FileDescriptor))
+	    return false;
+	filter_block_reader_ = state_->GetFilterBlockReader(handle);
+	/*
+	if (filter_block_reader_ != nullptr
+	    && handle.compare(data_block_handle_) == 0) {
+	    // already set
+	} else {
+	    if (handle.size() != sizeof(FileDescriptor))
+		return false;
+	    filter_block_reader_ = state_->GetFilterBlockReader(handle);
+	}
+	*/
+    }
+    return true;
 }
 
 }  // namespace

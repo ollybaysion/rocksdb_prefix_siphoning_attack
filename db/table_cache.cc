@@ -25,6 +25,8 @@
 #include "util/stop_watch.h"
 #include "util/sync_point.h"
 
+#include <iostream>
+
 namespace rocksdb {
 
 namespace {

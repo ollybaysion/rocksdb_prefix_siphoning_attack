@@ -24,6 +24,14 @@ class InternalIterator : public Cleanable {
   // not valid.  This method returns true iff the iterator is valid.
   virtual bool Valid() const = 0;
 
+  // huanchen
+  virtual Slice FilterSeek(const Slice& target) {
+      Seek(target);
+      if (Valid())
+	  return key();
+      return Slice();
+  }
+
   // Position at the first key in the source.  The iterator is Valid()
   // after this call iff the source is not empty.
   virtual void SeekToFirst() = 0;
@@ -51,6 +59,10 @@ class InternalIterator : public Cleanable {
   // true iff the iterator was not positioned at the first entry in source.
   // REQUIRES: Valid()
   virtual void Prev() = 0;
+
+  virtual Slice GetFilterKey() const {
+      return Slice();
+  }
 
   // Return the key for the current entry.  The underlying storage for
   // the returned slice is valid only until the next modification of

@@ -26,6 +26,8 @@
 #include <string>
 #include <vector>
 
+#include "rocksdb/slice.h"
+
 namespace rocksdb {
 
 class Slice;
@@ -71,6 +73,11 @@ class FilterBitsReader {
 
   // Check if the entry match the bits in filter
   virtual bool MayMatch(const Slice& entry) = 0;
+
+  // huanchen
+  virtual Slice Seek(const Slice& entry) {
+      return Slice();
+  }
 };
 
 // We add a new format of filter block called full filter block

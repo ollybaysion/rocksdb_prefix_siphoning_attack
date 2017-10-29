@@ -16,6 +16,8 @@
 #include "util/coding.h"
 #include "util/hash.h"
 
+#include <iostream>
+
 namespace rocksdb {
 
 class BlockBasedFilterBlockBuilder;
@@ -236,7 +238,6 @@ bool FullFilterBitsReader::HashMayMatch(const uint32_t& hash,
 
     h += delta;
   }
-
   return true;
 }
 

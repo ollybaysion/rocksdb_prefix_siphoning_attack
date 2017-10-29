@@ -102,6 +102,14 @@ class FilterBlockReader {
                               uint64_t block_offset = kNotValid,
                               const bool no_io = false,
                               const Slice* const const_ikey_ptr = nullptr) = 0;
+
+  // huanchen
+  virtual Slice Seek(const Slice& key, uint64_t block_offset = kNotValid,
+		     const bool no_io = false,
+		     const Slice* const const_ikey_ptr = nullptr) {
+      return Slice();
+  }
+  
   virtual size_t ApproximateMemoryUsage() const = 0;
   virtual size_t size() const { return size_; }
   virtual Statistics* statistics() const { return statistics_; }

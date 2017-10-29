@@ -49,6 +49,8 @@
 #include "util/string_util.h"
 #include "util/sync_point.h"
 
+#include <iostream>
+
 namespace rocksdb {
 
 extern const uint64_t kBlockBasedTableMagicNumber;
@@ -1137,6 +1139,7 @@ FilterBlockReader* BlockBasedTable::ReadFilter(
   if (rep->filter_type == Rep::FilterType::kNoFilter) {
     return nullptr;
   }
+  
   BlockContents block;
   if (!ReadBlockContents(rep->file.get(), prefetch_buffer, rep->footer,
                          ReadOptions(), filter_handle, &block, rep->ioptions,
@@ -1239,6 +1242,7 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
   } else {
     filter =
         ReadFilter(prefetch_buffer, filter_blk_handle, is_a_filter_partition);
+    
     if (filter != nullptr) {
       assert(filter->size() > 0);
       Status s = block_cache->Insert(

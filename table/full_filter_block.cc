@@ -10,6 +10,8 @@
 #include "rocksdb/filter_policy.h"
 #include "util/coding.h"
 
+#include <iostream>
+
 namespace rocksdb {
 
 FullFilterBlockBuilder::FullFilterBlockBuilder(
@@ -105,6 +107,20 @@ bool FullFilterBlockReader::MayMatch(const Slice& entry) {
     }
   }
   return true;  // remain the same with block_based filter
+}
+
+// huanchen
+Slice FullFilterBlockReader::Seek(const Slice& key, uint64_t block_offset,
+				  const bool no_io,
+				  const Slice* const const_ikey_ptr) {
+    assert(block_offset == kNotValid);
+    if (!whole_key_filtering_) {
+	return Slice();
+    }
+    if (contents_.size() != 0)  {
+	return filter_bits_reader_->Seek(key);
+    }
+    return Slice();
 }
 
 size_t FullFilterBlockReader::ApproximateMemoryUsage() const {

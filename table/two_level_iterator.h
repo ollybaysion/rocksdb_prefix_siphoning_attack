@@ -12,6 +12,9 @@
 #include "rocksdb/env.h"
 #include "table/iterator_wrapper.h"
 
+// huanchen
+#include "table/filter_block.h"
+
 namespace rocksdb {
 
 struct ReadOptions;
@@ -26,6 +29,9 @@ struct TwoLevelIteratorState {
   virtual InternalIterator* NewSecondaryIterator(const Slice& handle) = 0;
   virtual bool PrefixMayMatch(const Slice& internal_key) = 0;
   virtual bool KeyReachedUpperBound(const Slice& internal_key) = 0;
+
+    // huanchen
+    virtual FilterBlockReader* GetFilterBlockReader(const Slice& handle) = 0;
 
   // If call PrefixMayMatch()
   bool check_prefix_may_match;

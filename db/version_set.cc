@@ -51,6 +51,13 @@
 #include "util/string_util.h"
 #include "util/sync_point.h"
 
+// huanchen
+#include "table/filter_block.h"
+#include "table/block_based_table_reader.h"
+//#include "db/version_edit.h"
+
+#include <iostream>
+
 namespace rocksdb {
 
 namespace {
@@ -512,11 +519,12 @@ class LevelFileIteratorState : public TwoLevelIteratorState {
 
   InternalIterator* NewSecondaryIterator(const Slice& meta_handle) override {
     if (meta_handle.size() != sizeof(FileDescriptor)) {
-      return NewErrorInternalIterator(
+	return NewErrorInternalIterator(
           Status::Corruption("FileReader invoked with unexpected value"));
     }
     const FileDescriptor* fd =
         reinterpret_cast<const FileDescriptor*>(meta_handle.data());
+    
     return table_cache_->NewIterator(
         read_options_, env_options_, icomparator_, *fd, range_del_agg_,
         nullptr /* don't need reference to table */, file_read_hist_,
@@ -533,6 +541,25 @@ class LevelFileIteratorState : public TwoLevelIteratorState {
                ExtractUserKey(internal_key),
                *read_options_.iterate_upper_bound) >= 0;
   }
+
+    // huanchen
+    FilterBlockReader* GetFilterBlockReader(const Slice& handle) override {
+	const FileDescriptor* fd =
+	    reinterpret_cast<const FileDescriptor*>(handle.data());
+	BlockBasedTable* t = dynamic_cast<BlockBasedTable*>(fd->table_reader);
+	Cache::Handle* cache_handle = nullptr;
+	if (t == nullptr) {
+	    Status s = table_cache_->FindTable(env_options_, icomparator_, *fd, &cache_handle,
+					       read_options_.read_tier == kBlockCacheTier /* no_io */,
+					       true /* record_read_stats */, file_read_hist_,
+					       skip_filters_, level_);
+	    if (s.ok()) {
+		t = dynamic_cast<BlockBasedTable*>(table_cache_->GetTableReaderFromHandle(cache_handle));
+	    }
+	}
+	BlockBasedTable::CachableEntry<FilterBlockReader> filter_entry = t->GetFilter(nullptr, read_options_.read_tier == kBlockCacheTier /* no_io */);
+	return filter_entry.value;
+    }
 
  private:
   TableCache* table_cache_;

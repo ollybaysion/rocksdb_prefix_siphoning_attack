@@ -7,6 +7,8 @@
 
 #include "third-party/SuRF/include/surf.hpp"
 
+#include <iostream>
+
 namespace rocksdb {
 
 class BlockBasedFilterBlockBuilder;
@@ -71,6 +73,12 @@ public:
 
     virtual bool MayMatch(const Slice& entry) override {
 	return filter_->lookupKey(std::string(entry.data(), entry.size()));
+    }
+
+    // huanchen
+    virtual Slice Seek(const Slice& entry) override {
+	surf::SuRF::Iter iter = filter_->moveToKeyGreaterThan(std::string(entry.data(), entry.size()), true);
+	return Slice(iter.getKey());
     }
 
 private:
