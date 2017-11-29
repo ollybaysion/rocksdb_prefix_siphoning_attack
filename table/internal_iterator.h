@@ -32,6 +32,11 @@ class InternalIterator : public Cleanable {
       return Slice();
   }
 
+  // huanchen
+  virtual void SetUpperKey(const Slice* upper_key) {
+      ;
+  }
+
   // Position at the first key in the source.  The iterator is Valid()
   // after this call iff the source is not empty.
   virtual void SeekToFirst() = 0;

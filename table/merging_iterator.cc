@@ -47,6 +47,7 @@ class MergingIterator : public InternalIterator {
         direction_(kForward),
         minHeap_(comparator_),
         prefix_seek_mode_(prefix_seek_mode),
+	upper_key_(nullptr), // huanchen
         pinned_iters_mgr_(nullptr) {
     children_.resize(n);
     for (int i = 0; i < n; i++) {
@@ -105,6 +106,11 @@ class MergingIterator : public InternalIterator {
     direction_ = kReverse;
     current_ = CurrentReverse();
   }
+
+    // huanchen
+    void SetUpperKey(const Slice* upper_key) override {
+	upper_key_ = upper_key;
+    }
 
   virtual void Seek(const Slice& target) override {
       // huanchen
@@ -320,6 +326,8 @@ class MergingIterator : public InternalIterator {
   MergerMinIterHeap minHeap_;
   bool prefix_seek_mode_;
 
+    const Slice* upper_key_; // huanchen
+
   // Max heap is used for reverse iteration, which is way less common than
   // forward.  Lazily initialize it to save memory.
   std::unique_ptr<MergerMaxIterHeap> maxHeap_;
@@ -366,6 +374,13 @@ class MergingIterator : public InternalIterator {
 	    if (filter_key_cur.size() == 0) {
 		no_filter_indexes.push_back(idx);
 		continue;
+	    }
+
+	    if (upper_key_ != nullptr) {
+		std::string upper_key = std::string(upper_key_->data(), upper_key_->size());
+		if (filter_key_cur.compare(upper_key) > 0) {
+		    continue;
+		}
 	    }
 	    
 	    if (filter_key_min.size() == 0) {

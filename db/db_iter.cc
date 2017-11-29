@@ -152,6 +152,7 @@ class DBIter final: public Iterator {
   virtual void SetIter(InternalIterator* iter) {
     assert(iter_ == nullptr);
     iter_ = iter;
+    iter_->SetUpperKey(iterate_upper_bound_); // huanchen
     iter_->SetPinnedItersMgr(&pinned_iters_mgr_);
   }
   virtual RangeDelAggregator* GetRangeDelAggregator() {

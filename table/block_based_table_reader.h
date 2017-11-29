@@ -415,7 +415,7 @@ struct BlockBasedTable::Rep {
       const InternalKeyComparator& _internal_comparator, bool skip_filters)
       : ioptions(_ioptions),
         env_options(_env_options),
-        table_options(_table_opt),
+	table_options(_table_opt),
         filter_policy(skip_filters ? nullptr : _table_opt.filter_policy.get()),
         internal_comparator(_internal_comparator),
         filter_type(FilterType::kNoFilter),

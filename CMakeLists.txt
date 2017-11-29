@@ -57,7 +57,8 @@ else()
     endif()
   endif()
 
-  option(WITH_SNAPPY "build with SNAPPY" OFF)
+  #option(WITH_SNAPPY "build with SNAPPY" OFF)
+  option(WITH_SNAPPY "build with SNAPPY" ON) # huanchen
   if(WITH_SNAPPY)
     find_package(snappy REQUIRED)
     add_definitions(-DSNAPPY)
@@ -928,4 +929,7 @@ if(WITH_TOOLS)
 endif()
 
 # SuRF Test
+add_subdirectory(test_filter)
+
+# SuRF Experiment
 add_subdirectory(filter_experiment)

@@ -95,6 +95,8 @@
 #include "util/string_util.h"
 #include "util/sync_point.h"
 
+#include <iostream>
+
 namespace rocksdb {
 const std::string kDefaultColumnFamilyName("default");
 void DumpRocksDBBuildVersion(Logger * log);
