@@ -82,7 +82,8 @@ else()
     list(APPEND THIRDPARTY_LIBS ${BZIP2_LIBRARIES})
   endif()
 
-  option(WITH_LZ4 "build with lz4" OFF)
+  #option(WITH_LZ4 "build with lz4" OFF)
+  option(WITH_LZ4 "build with lz4" ON) # huanchen
   if(WITH_LZ4)
     find_package(lz4 REQUIRED)
     add_definitions(-DLZ4)
