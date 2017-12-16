@@ -351,8 +351,8 @@ std::string ParseBlockBasedTableOption(const std::string& name,
 	  bool use_block_based_builder =
           ParseBoolean("use_block_based_builder", trim(config_value.substr(pos + 1)));
 
-	  new_options->filter_policy.reset(NewSuRFPolicy(surf_type, suffix_len,
-							 include_dense, sparse_dense_ratio,
+	  new_options->filter_policy.reset(NewSuRFPolicy(surf_type, (uint32_t)suffix_len,
+							 include_dense, (uint32_t)sparse_dense_ratio,
 							 use_block_based_builder));
 	  return "";
       } else {
