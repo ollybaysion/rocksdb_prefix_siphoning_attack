@@ -299,6 +299,68 @@ std::string ParseBlockBasedTableOption(const std::string& name,
     } else if (name == "filter_policy") {
       // Expect the following format
       // bloomfilter:int:bool
+
+      // huanchen
+      const std::string kName = "bloomfilter:";
+      const std::string kRangeName = "surf:";
+      if (value.compare(0, kName.size(), kName) == 0) {
+	  size_t pos = value.find(':', kName.size());
+	  if (pos == std::string::npos) {
+	      return "Invalid filter policy config, missing bits_per_key";
+	  }
+	  int bits_per_key =
+	      ParseInt(trim(value.substr(kName.size(), pos - kName.size())));
+	  bool use_block_based_builder =
+	      ParseBoolean("use_block_based_builder", trim(value.substr(pos + 1)));
+	  new_options->filter_policy.reset(
+					   NewBloomFilterPolicy(bits_per_key, use_block_based_builder));
+	  return "";
+      } else if (value.compare(0, kRangeName.size(), kRangeName) == 0) {
+	  // format for SuRF
+	  // surf:int:int:bool:int:bool
+	  std::string config_value = value;
+	  
+	  config_value = config_value.substr(kRangeName.size());
+	  size_t pos = config_value.find(':');
+	  if (pos == std::string::npos) {
+	      return "Invalid SuRF filter policy config, missing SuRF type";
+	  }
+	  int surf_type = ParseInt(trim(config_value.substr(0, pos)));
+
+	  config_value = config_value.substr(pos + 1);
+	  pos = config_value.find(':');
+	  if (pos == std::string::npos) {
+	      return "Invalid SuRF filter policy config, missing suffix length";
+	  }
+	  int suffix_len = ParseInt(trim(config_value.substr(0, pos)));
+
+	  config_value = config_value.substr(pos + 1);
+	  pos = config_value.find(':');
+	  if (pos == std::string::npos) {
+	      return "Invalid SuRF filter policy config, missing include dense";
+	  }
+	  bool include_dense = ParseBoolean("include_dense", trim(config_value.substr(0, pos)));
+
+	  config_value = config_value.substr(pos + 1);
+	  pos = config_value.find(':');
+	  if (pos == std::string::npos) {
+	      return "Invalid SuRF filter policy config, missing sparse dense ratio";
+	  }
+	  int sparse_dense_ratio = ParseInt(trim(config_value.substr(0, pos)));
+
+	  bool use_block_based_builder =
+          ParseBoolean("use_block_based_builder", trim(config_value.substr(pos + 1)));
+
+	  new_options->filter_policy.reset(NewSuRFPolicy(surf_type, suffix_len,
+							 include_dense, sparse_dense_ratio,
+							 use_block_based_builder));
+	  return "";
+      } else {
+	  return "Invalid filter policy name";
+      }
+
+      // ori
+      /*
       const std::string kName = "bloomfilter:";
       if (value.compare(0, kName.size(), kName) != 0) {
         return "Invalid filter policy name";
@@ -314,6 +376,7 @@ std::string ParseBlockBasedTableOption(const std::string& name,
       new_options->filter_policy.reset(
           NewBloomFilterPolicy(bits_per_key, use_block_based_builder));
       return "";
+      */
     }
   }
   const auto iter = block_based_table_type_info.find(name);
