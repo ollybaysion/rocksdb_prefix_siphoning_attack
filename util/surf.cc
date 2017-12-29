@@ -76,9 +76,9 @@ public:
     }
 
     // huanchen
-    virtual Slice Seek(const Slice& entry) override {
+    virtual Slice Seek(const Slice& entry, unsigned* bitlen) override {
 	surf::SuRF::Iter iter = filter_->moveToKeyGreaterThan(std::string(entry.data(), entry.size()), true);
-	return Slice(iter.getKeyWithSuffix());
+	return Slice(iter.getKeyWithSuffix(bitlen));
     }
 
 private:

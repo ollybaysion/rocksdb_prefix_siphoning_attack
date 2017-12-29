@@ -25,7 +25,7 @@ class InternalIterator : public Cleanable {
   virtual bool Valid() const = 0;
 
   // huanchen
-  virtual Slice FilterSeek(const Slice& target) {
+  virtual Slice FilterSeek(const Slice& target, unsigned* bitlen) {
       Seek(target);
       if (Valid())
 	  return key();

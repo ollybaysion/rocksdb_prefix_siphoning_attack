@@ -32,7 +32,7 @@ namespace rocksdb {
 
 namespace filtertest {
 
-static const std::string kFilePath = "../../filter_test/words.txt";
+static const std::string kFilePath = "../../test_filter/words.txt";
 static const int kTestSize = 234369;
 static const int kValueSize = 100;
 
@@ -77,13 +77,13 @@ void FilterTest::loadDataFilePaths() {
     datafiles_.push_back(std::string("./surf_hash_int"));
     datafiles_.push_back(std::string("./surf_real_int"));
 
-    datafiles_.push_back(std::string("./bloom_word_compress"));
-    datafiles_.push_back(std::string("./surf_hash_word_compress"));
-    datafiles_.push_back(std::string("./surf_real_word_compress"));
+    //datafiles_.push_back(std::string("./bloom_word_compress"));
+    //datafiles_.push_back(std::string("./surf_hash_word_compress"));
+    //datafiles_.push_back(std::string("./surf_real_word_compress"));
 
-    datafiles_.push_back(std::string("./bloom_int_compress"));
-    datafiles_.push_back(std::string("./surf_hash_int_compress"));
-    datafiles_.push_back(std::string("./surf_real_int_compress"));
+    //datafiles_.push_back(std::string("./bloom_int_compress"));
+    //datafiles_.push_back(std::string("./surf_hash_int_compress"));
+    //datafiles_.push_back(std::string("./surf_real_int_compress"));
 }
 
 void FilterTest::setupDir() {
@@ -256,6 +256,7 @@ void FilterTest::rangeQuerySingleConfig(int key_type) {
     if (key_type == 1) {
 	Iterator* it = db_->NewIterator(ReadOptions());
 	for (int i = 0; i < kTestSize - 1; i++) {
+	    //for (int i = 109705; i < 109706; i++) {
 	    uint64_t key = ints_sorted_[i] + (ints_sorted_[i+1] - ints_sorted_[i]) / 2;
 	    key = htobe64(key);
 	    Slice s_key(reinterpret_cast<const char*>(&key), sizeof(key));
@@ -266,19 +267,25 @@ void FilterTest::rangeQuerySingleConfig(int key_type) {
 	    uint64_t found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
 	    found_key = be64toh(found_key);
 
-	    if (i == 50 || ints_sorted_[i+1] != found_key) {
-		std::cout << "i = " << i << "\n";
-		std::cout << std::hex << "ints_sorted_[i+1] = " << ints_sorted_[i+1] << "\n";
-		std::cout << "found_key = " << found_key << std::dec << "\n";
-		uint64_t found_key_be = htobe64(found_key);
-		char* found_key_be_char = reinterpret_cast<char*>(&found_key_be);
-		for (int j = 0; j < 8; j++) {
-		    std::cout << (uint16_t)found_key_be_char[j] << " ";
-		}
-		std::cout << "\n";
+	    /*
+	    std::cout << std::hex << "ints_sorted_[i] = " << ints_sorted_[i] << "\n";
+	    std::cout << std::hex << (ints_sorted_[i] + (ints_sorted_[i+1] - ints_sorted_[i]) / 2) << "\n";
+	    std::cout << std::hex << "ints_sorted_[i+1] = " << ints_sorted_[i+1] << "\n";
+	    std::cout << "found_key = " << found_key << std::dec << "\n";
+	    uint64_t found_key_be = htobe64(found_key);
+	    char* found_key_be_char = reinterpret_cast<char*>(&found_key_be);
+	    for (int j = 0; j < 8; j++) {
+		std::cout << std::hex << (uint16_t)found_key_be_char[j] << std::dec << " ";
 	    }
+	    std::cout << "\n";
+	    */
+	    /*
+	    if (ints_sorted_[i+1] != found_key)
+		std::cout << "i = " << i << "\n";
+	    */
 	    
 	    ASSERT_EQ(ints_sorted_[i+1], found_key);
+	    
 	    /*
 	    it->Next();
 	    if (i < kTestSize - 2) {
@@ -304,10 +311,11 @@ void FilterTest::query() {
     init_key_types();
 
     //setupDir();
-    //for (int i = 0; i < (int)datafiles_.size(); i++) {
-    for (int i = 3; i < 5; i++) {
+    for (int i = 0; i < (int)datafiles_.size(); i++) {
+	//for (int i = 4; i < 6; i++) {
+	std::cout << datafiles_[i] << "----------------------------------\n";
 	initSingleConfig(options_vec_[i], datafiles_[i], key_type_vec_[i]);
-	//pointQuerySingleConfig(key_type_vec_[i]);
+	pointQuerySingleConfig(key_type_vec_[i]);
 	rangeQuerySingleConfig(key_type_vec_[i]);
     }
 
@@ -331,3 +339,5 @@ int main (int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+
+

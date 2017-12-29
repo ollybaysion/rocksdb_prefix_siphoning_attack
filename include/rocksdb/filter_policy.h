@@ -75,7 +75,7 @@ class FilterBitsReader {
   virtual bool MayMatch(const Slice& entry) = 0;
 
   // huanchen
-  virtual Slice Seek(const Slice& entry) {
+  virtual Slice Seek(const Slice& entry, unsigned* bitlen) {
       return Slice();
   }
 };

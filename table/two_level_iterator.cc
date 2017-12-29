@@ -47,7 +47,7 @@ class TwoLevelIterator : public InternalIterator {
     }
   }
 
-  virtual Slice FilterSeek(const Slice& target) override; // huanchen
+  virtual Slice FilterSeek(const Slice& target, unsigned* bitlen) override; // huanchen
   virtual void Seek(const Slice& target) override;
   virtual void SeekForPrev(const Slice& target) override;
   virtual void SeekToFirst() override;
@@ -125,7 +125,7 @@ TwoLevelIterator::TwoLevelIterator(TwoLevelIteratorState* state,
       pinned_iters_mgr_(nullptr) {}
 
 // huanchen
-Slice TwoLevelIterator::FilterSeek(const Slice& target) {
+Slice TwoLevelIterator::FilterSeek(const Slice& target, unsigned* bitlen) {
     /*
     std::cout << "target = ";
     for (int i = 0; i < (int)target.size(); i++)
@@ -137,7 +137,7 @@ Slice TwoLevelIterator::FilterSeek(const Slice& target) {
     if (!InitFilterBlockReader() || filter_block_reader_ == nullptr) {
 	return Slice();
     }
-    return filter_block_reader_->Seek(target);
+    return filter_block_reader_->Seek(target, bitlen);
 }
     
 void TwoLevelIterator::Seek(const Slice& target) {

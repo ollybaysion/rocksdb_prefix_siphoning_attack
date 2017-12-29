@@ -110,7 +110,8 @@ bool FullFilterBlockReader::MayMatch(const Slice& entry) {
 }
 
 // huanchen
-Slice FullFilterBlockReader::Seek(const Slice& key, uint64_t block_offset,
+Slice FullFilterBlockReader::Seek(const Slice& key, unsigned* bitlen,
+				  uint64_t block_offset,
 				  const bool no_io,
 				  const Slice* const const_ikey_ptr) {
     assert(block_offset == kNotValid);
@@ -118,7 +119,7 @@ Slice FullFilterBlockReader::Seek(const Slice& key, uint64_t block_offset,
 	return Slice();
     }
     if (contents_.size() != 0)  {
-	return filter_bits_reader_->Seek(key);
+	return filter_bits_reader_->Seek(key, bitlen);
     }
     return Slice();
 }
