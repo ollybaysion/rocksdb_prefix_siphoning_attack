@@ -141,6 +141,36 @@ class MergingIterator : public InternalIterator {
   }
 
   virtual void SeekForPrev(const Slice& target) override {
+      // huanchen
+      std::vector<int> max_indexes;
+      FilterChildrenBackward(target, max_indexes);
+      
+    ClearHeaps();
+    InitMaxHeap();
+
+    //for (auto& child : children_) { // ori
+    for (int i = 0; i < (int)max_indexes.size(); i++) { // huanchen
+	int idx = max_indexes[i]; // huanchen
+	auto& child = children_[idx]; // huanchen
+      {
+        PERF_TIMER_GUARD(seek_child_seek_time);
+        child.SeekForPrev(target);
+      }
+      PERF_COUNTER_ADD(seek_child_seek_count, 1);
+
+      if (child.Valid()) {
+        PERF_TIMER_GUARD(seek_max_heap_time);
+        maxHeap_->push(&child);
+      }
+    }
+    direction_ = kReverse;
+    {
+      PERF_TIMER_GUARD(seek_max_heap_time);
+      current_ = CurrentReverse();
+    }
+  }
+    /*
+  virtual void SeekForPrev(const Slice& target) override {
     ClearHeaps();
     InitMaxHeap();
 
@@ -162,7 +192,7 @@ class MergingIterator : public InternalIterator {
       current_ = CurrentReverse();
     }
   }
-
+    */
   virtual void Next() override {
     assert(Valid());
 
@@ -337,6 +367,19 @@ class MergingIterator : public InternalIterator {
     // helper
     bool isPrefix(const std::string& a, const unsigned a_bitlen,
 		  const std::string& b, const unsigned b_bitlen) {
+	/*
+	std::cout << "a = ";
+	for (int j = 0; j < (int)a.size(); j++)
+	    std::cout << std::hex << (uint16_t)a[j] << " ";
+	std::cout << std::dec << "\n";
+	std::cout << "a_bitlen = " << a_bitlen << "\n";
+
+	std::cout << "b = ";
+	for (int j = 0; j < (int)b.size(); j++)
+	    std::cout << std::hex << (uint16_t)b[j] << " ";
+	std::cout << std::dec << "\n";
+	std::cout << "b_bitlen = " << b_bitlen << "\n";
+	*/
 	std::string s, l; // shorter, longer string
 	unsigned s_bitlen;
 	if ((a.length() < b.length())
@@ -413,14 +456,8 @@ class MergingIterator : public InternalIterator {
 	    std::string filter_key_cur
 		= child.FilterSeek(target, &bitlen).ToString();
 	    if (bitlen == 0)
-		bitlen = 0;
-	    /*
-	    std::cout << "\tidx = " << idx << "\t";
-	    std::cout << "filter_key_cur.size() = " << filter_key_cur.size() << "\t";
-	    for (int j = 0; j < (int)filter_key_cur.size(); j++)
-		std::cout << std::hex << (uint16_t)filter_key_cur[j] << " ";
-	    std::cout << std::dec << "\n";
-	    */
+		bitlen = 8;
+
 	    if (filter_key_cur.size() == 0) {
 		no_filter_indexes.push_back(idx);
 		continue;
@@ -447,19 +484,6 @@ class MergingIterator : public InternalIterator {
 		min_indexes.clear();
 		min_indexes.push_back(idx);
 	    }
-	    /*
-	    std::cout << "\tfilter_key_min = ";
-	    for (int j = 0; j < (int)filter_key_min.size(); j++)
-		std::cout << std::hex << (uint16_t)filter_key_min[j] << " ";
-	    std::cout << std::dec << "\n";
-
-	    std::cout << "\tmin indexes: ";
-	    for (int k = 0; k < (int)min_indexes.size(); k++) {
-		std::cout << min_indexes[k] << " ";
-	    }
-	    std::cout << "\n";
-	    */
-
 	}
 
 	for (int i = 0; i < (int)no_filter_indexes.size(); i++)
@@ -467,10 +491,72 @@ class MergingIterator : public InternalIterator {
 
 	for (int i = 0; i < (int)target_prefix_indexes.size(); i++)
 	    min_indexes.push_back(target_prefix_indexes[i]);
+    }
+
+        // huanchen
+    void FilterChildrenBackward(const Slice& target, std::vector<int>& max_indexes) {
+	std::string target_str = std::string(target.data(), target.size());
+	std::string filter_key_max;
+	unsigned bitlen_max = 0;
+	std::vector<int> no_filter_indexes;
+	std::vector<int> target_prefix_indexes;
+	for (int idx = 0; idx < (int)children_.size(); idx++) {
+	    auto& child = children_[idx];
+	    unsigned bitlen = 0;
+	    std::string filter_key_cur
+		= child.FilterSeekForPrev(target, &bitlen).ToString();
+	    /*
+	    std::cout << "\tidx = " << idx << "\t";
+	    std::cout << "filter_key_cur.size() = " << filter_key_cur.size() << "\t";
+	    for (int j = 0; j < (int)filter_key_cur.size(); j++)
+	    	std::cout << std::hex << (uint16_t)filter_key_cur[j] << " ";
+	    std::cout << std::dec << "\n";
+	    */
+	    if (bitlen == 0)
+		bitlen = 8;
+
+	    if (filter_key_cur.size() == 0) {
+		no_filter_indexes.push_back(idx);
+		continue;
+	    }
+
+	    if (isPrefix(filter_key_cur, bitlen, target_str, 8)) {
+		target_prefix_indexes.push_back(idx);
+	    } else if (filter_key_max.size() == 0) {
+		filter_key_max = filter_key_cur;
+		bitlen_max = bitlen;
+		max_indexes.push_back(idx);
+	    } else if (isPrefix(filter_key_cur, bitlen, filter_key_max, bitlen_max)) {
+		max_indexes.push_back(idx);
+	    } else if (compareKeys(filter_key_cur, bitlen, filter_key_max, bitlen_max) > 0) {
+		filter_key_max = filter_key_cur;
+		bitlen_max = bitlen;
+		max_indexes.clear();
+		max_indexes.push_back(idx);
+	    }
+	    /*
+	    std::cout << "\tfilter_key_max = ";
+	    for (int j = 0; j < (int)filter_key_max.size(); j++)
+	    	std::cout << std::hex << (uint16_t)filter_key_max[j] << " ";
+	    std::cout << std::dec << "\n";
+
+	    std::cout << "\tmax indexes: ";
+	    for (int k = 0; k < (int)max_indexes.size(); k++) {
+	    	std::cout << max_indexes[k] << " ";
+	    }
+	    std::cout << "\n";
+	    */
+	}
+
+	for (int i = 0; i < (int)no_filter_indexes.size(); i++)
+	    max_indexes.push_back(no_filter_indexes[i]);
+
+	for (int i = 0; i < (int)target_prefix_indexes.size(); i++)
+	    max_indexes.push_back(target_prefix_indexes[i]);
 	/*
-	std::cout << "\tmin indexes: ";
-	for (int k = 0; k < (int)min_indexes.size(); k++) {
-	    std::cout << min_indexes[k] << " ";
+	std::cout << "\tmax indexes: ";
+	for (int k = 0; k < (int)max_indexes.size(); k++) {
+	    std::cout << max_indexes[k] << " ";
 	}
 	std::cout << "\n";
 	*/

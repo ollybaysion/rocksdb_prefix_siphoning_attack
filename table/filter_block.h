@@ -110,6 +110,14 @@ class FilterBlockReader {
 		     const Slice* const const_ikey_ptr = nullptr) {
       return Slice();
   }
+
+  // huanchen
+  virtual Slice SeekForPrev(const Slice& key, unsigned* bitlen,
+			    uint64_t block_offset = kNotValid,
+			    const bool no_io = false,
+			    const Slice* const const_ikey_ptr = nullptr) {
+      return Slice();
+  }
   
   virtual size_t ApproximateMemoryUsage() const = 0;
   virtual size_t size() const { return size_; }

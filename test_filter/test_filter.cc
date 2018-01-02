@@ -255,8 +255,8 @@ void FilterTest::pointQuerySingleConfig(int key_type) {
 void FilterTest::rangeQuerySingleConfig(int key_type) {
     if (key_type == 1) {
 	Iterator* it = db_->NewIterator(ReadOptions());
+
 	for (int i = 0; i < kTestSize - 1; i++) {
-	    //for (int i = 109705; i < 109706; i++) {
 	    uint64_t key = ints_sorted_[i] + (ints_sorted_[i+1] - ints_sorted_[i]) / 2;
 	    key = htobe64(key);
 	    Slice s_key(reinterpret_cast<const char*>(&key), sizeof(key));
@@ -266,10 +266,37 @@ void FilterTest::rangeQuerySingleConfig(int key_type) {
 	    ASSERT_TRUE(it->Valid());
 	    uint64_t found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
 	    found_key = be64toh(found_key);
+	    ASSERT_EQ(ints_sorted_[i+1], found_key);
+
+	    // it->Next();
+	    // if (i < kTestSize - 2) {
+	    // 	ASSERT_TRUE(it->Valid());
+	    // 	found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
+	    // 	found_key = be64toh(found_key);
+		
+	    // 	ASSERT_EQ(ints_sorted_[i+2], found_key);
+	    // }
+	    // else {
+	    // 	ASSERT_FALSE(it->Valid());
+	    // }
+	}
+
+	for (int i = 0; i < kTestSize - 1; i++) {
+	//for (int i = 13530; i < 13532; i++) {
+	    uint64_t key = ints_sorted_[i] + (ints_sorted_[i+1] - ints_sorted_[i]) / 2;
+	    key = htobe64(key);
+	    Slice s_key(reinterpret_cast<const char*>(&key), sizeof(key));
+	    std::string s_value;
+	    
+	    it->SeekForPrev(s_key);
+	    ASSERT_TRUE(it->Valid());
+	    uint64_t found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
+	    found_key = be64toh(found_key);
 
 	    /*
+	    std::cout << std::hex << "ints_sorted_[i-1] = " << ints_sorted_[i-1] << "\n";
 	    std::cout << std::hex << "ints_sorted_[i] = " << ints_sorted_[i] << "\n";
-	    std::cout << std::hex << (ints_sorted_[i] + (ints_sorted_[i+1] - ints_sorted_[i]) / 2) << "\n";
+	    std::cout << std::hex << "key = " << (ints_sorted_[i] + (ints_sorted_[i+1] - ints_sorted_[i]) / 2) << "\n";
 	    std::cout << std::hex << "ints_sorted_[i+1] = " << ints_sorted_[i+1] << "\n";
 	    std::cout << "found_key = " << found_key << std::dec << "\n";
 	    uint64_t found_key_be = htobe64(found_key);
@@ -279,26 +306,12 @@ void FilterTest::rangeQuerySingleConfig(int key_type) {
 	    }
 	    std::cout << "\n";
 	    */
-	    /*
-	    if (ints_sorted_[i+1] != found_key)
-		std::cout << "i = " << i << "\n";
-	    */
+
+	    if (ints_sorted_[i] != found_key)
+		std::cout << "i = " << i << "----------------------------------------------\n";
+
 	    
-	    ASSERT_EQ(ints_sorted_[i+1], found_key);
-	    
-	    /*
-	    it->Next();
-	    if (i < kTestSize - 2) {
-		ASSERT_TRUE(it->Valid());
-		found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
-		found_key = be64toh(found_key);
-		
-		ASSERT_EQ(ints_sorted_[i+2], found_key);
-	    }
-	    else {
-		ASSERT_FALSE(it->Valid());
-	    }
-	    */
+	    ASSERT_EQ(ints_sorted_[i], found_key);
 	}
     }
 }

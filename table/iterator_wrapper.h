@@ -66,6 +66,12 @@ class IteratorWrapper {
       assert(iter_);
       return iter_->FilterSeek(k, bitlen);
   }
+
+  // huanchen
+  Slice FilterSeekForPrev(const Slice& k, unsigned* bitlen) {
+      assert(iter_);
+      return iter_->FilterSeekForPrev(k, bitlen);
+  }
   
   void Seek(const Slice& k) { assert(iter_); iter_->Seek(k);       Update(); }
   void SeekForPrev(const Slice& k) {

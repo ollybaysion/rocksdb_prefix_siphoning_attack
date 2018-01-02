@@ -78,6 +78,11 @@ class FilterBitsReader {
   virtual Slice Seek(const Slice& entry, unsigned* bitlen) {
       return Slice();
   }
+
+  // huanchen
+  virtual Slice SeekForPrev(const Slice& entry, unsigned* bitlen) {
+      return Slice();
+  }
 };
 
 // We add a new format of filter block called full filter block

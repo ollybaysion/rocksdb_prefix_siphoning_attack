@@ -106,6 +106,13 @@ class FullFilterBlockReader : public FilterBlockReader {
       uint64_t block_offset = kNotValid,
       const bool no_io = false,
       const Slice* const const_ikey_ptr = nullptr) override;
+
+  // huanchen
+  virtual Slice SeekForPrev(
+      const Slice& key, unsigned* bitlen,
+      uint64_t block_offset = kNotValid,
+      const bool no_io = false,
+      const Slice* const const_ikey_ptr = nullptr) override;
   
   virtual size_t ApproximateMemoryUsage() const override;
 

@@ -81,6 +81,12 @@ public:
 	return Slice(iter.getKeyWithSuffix(bitlen));
     }
 
+    // huanchen
+    virtual Slice SeekForPrev(const Slice& entry, unsigned* bitlen) override {
+	surf::SuRF::Iter iter = filter_->moveToKeyLessThan(std::string(entry.data(), entry.size()), true);
+	return Slice(iter.getKeyWithSuffix(bitlen));
+    }
+
 private:
     char* data_;
     uint64_t size_;

@@ -33,6 +33,14 @@ class InternalIterator : public Cleanable {
   }
 
   // huanchen
+  virtual Slice FilterSeekForPrev(const Slice& target, unsigned* bitlen) {
+      SeekForPrev(target);
+      if (Valid())
+	  return key();
+      return Slice();
+  }
+
+  // huanchen
   virtual void SetUpperKey(const Slice* upper_key) {
       ;
   }

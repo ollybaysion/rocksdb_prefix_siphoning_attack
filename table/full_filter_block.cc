@@ -124,6 +124,21 @@ Slice FullFilterBlockReader::Seek(const Slice& key, unsigned* bitlen,
     return Slice();
 }
 
+// huanchen
+Slice FullFilterBlockReader::SeekForPrev(const Slice& key, unsigned* bitlen,
+					 uint64_t block_offset,
+					 const bool no_io,
+					 const Slice* const const_ikey_ptr) {
+    assert(block_offset == kNotValid);
+    if (!whole_key_filtering_) {
+	return Slice();
+    }
+    if (contents_.size() != 0)  {
+	return filter_bits_reader_->SeekForPrev(key, bitlen);
+    }
+    return Slice();
+}
+
 size_t FullFilterBlockReader::ApproximateMemoryUsage() const {
   return contents_.size();
 }
