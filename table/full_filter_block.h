@@ -102,14 +102,14 @@ class FullFilterBlockReader : public FilterBlockReader {
   
   // huanchen
   virtual Slice Seek(
-      const Slice& key, unsigned* bitlen,
+      const Slice& key, unsigned* bitlen, const bool inclusive,
       uint64_t block_offset = kNotValid,
       const bool no_io = false,
       const Slice* const const_ikey_ptr = nullptr) override;
 
   // huanchen
   virtual Slice SeekForPrev(
-      const Slice& key, unsigned* bitlen,
+      const Slice& key, unsigned* bitlen, const bool inclusive,
       uint64_t block_offset = kNotValid,
       const bool no_io = false,
       const Slice* const const_ikey_ptr = nullptr) override;

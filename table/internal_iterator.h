@@ -25,7 +25,7 @@ class InternalIterator : public Cleanable {
   virtual bool Valid() const = 0;
 
   // huanchen
-  virtual Slice FilterSeek(const Slice& target, unsigned* bitlen) {
+  virtual Slice FilterSeek(const Slice& target, unsigned* bitlen, const bool inclusive) {
       Seek(target);
       if (Valid())
 	  return key();
@@ -33,7 +33,7 @@ class InternalIterator : public Cleanable {
   }
 
   // huanchen
-  virtual Slice FilterSeekForPrev(const Slice& target, unsigned* bitlen) {
+  virtual Slice FilterSeekForPrev(const Slice& target, unsigned* bitlen, const bool inclusive) {
       SeekForPrev(target);
       if (Valid())
 	  return key();

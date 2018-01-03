@@ -104,7 +104,7 @@ class FilterBlockReader {
                               const Slice* const const_ikey_ptr = nullptr) = 0;
 
   // huanchen
-  virtual Slice Seek(const Slice& key, unsigned* bitlen,
+  virtual Slice Seek(const Slice& key, unsigned* bitlen, const bool inclusive,
 		     uint64_t block_offset = kNotValid,
 		     const bool no_io = false,
 		     const Slice* const const_ikey_ptr = nullptr) {
@@ -112,7 +112,7 @@ class FilterBlockReader {
   }
 
   // huanchen
-  virtual Slice SeekForPrev(const Slice& key, unsigned* bitlen,
+  virtual Slice SeekForPrev(const Slice& key, unsigned* bitlen, const bool inclusive,
 			    uint64_t block_offset = kNotValid,
 			    const bool no_io = false,
 			    const Slice* const const_ikey_ptr = nullptr) {

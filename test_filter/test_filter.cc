@@ -268,21 +268,19 @@ void FilterTest::rangeQuerySingleConfig(int key_type) {
 	    found_key = be64toh(found_key);
 	    ASSERT_EQ(ints_sorted_[i+1], found_key);
 
-	    // it->Next();
-	    // if (i < kTestSize - 2) {
-	    // 	ASSERT_TRUE(it->Valid());
-	    // 	found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
-	    // 	found_key = be64toh(found_key);
-		
-	    // 	ASSERT_EQ(ints_sorted_[i+2], found_key);
-	    // }
-	    // else {
-	    // 	ASSERT_FALSE(it->Valid());
-	    // }
+	    it->Next();
+	    if (i < kTestSize - 2) {
+	    	ASSERT_TRUE(it->Valid());
+	    	found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
+	    	found_key = be64toh(found_key);
+	    	ASSERT_EQ(ints_sorted_[i+2], found_key);
+	    }
+	    else {
+	    	ASSERT_FALSE(it->Valid());
+	    }
 	}
 
 	for (int i = 0; i < kTestSize - 1; i++) {
-	//for (int i = 13530; i < 13532; i++) {
 	    uint64_t key = ints_sorted_[i] + (ints_sorted_[i+1] - ints_sorted_[i]) / 2;
 	    key = htobe64(key);
 	    Slice s_key(reinterpret_cast<const char*>(&key), sizeof(key));
@@ -292,27 +290,20 @@ void FilterTest::rangeQuerySingleConfig(int key_type) {
 	    ASSERT_TRUE(it->Valid());
 	    uint64_t found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
 	    found_key = be64toh(found_key);
-
-	    /*
-	    std::cout << std::hex << "ints_sorted_[i-1] = " << ints_sorted_[i-1] << "\n";
-	    std::cout << std::hex << "ints_sorted_[i] = " << ints_sorted_[i] << "\n";
-	    std::cout << std::hex << "key = " << (ints_sorted_[i] + (ints_sorted_[i+1] - ints_sorted_[i]) / 2) << "\n";
-	    std::cout << std::hex << "ints_sorted_[i+1] = " << ints_sorted_[i+1] << "\n";
-	    std::cout << "found_key = " << found_key << std::dec << "\n";
-	    uint64_t found_key_be = htobe64(found_key);
-	    char* found_key_be_char = reinterpret_cast<char*>(&found_key_be);
-	    for (int j = 0; j < 8; j++) {
-		std::cout << std::hex << (uint16_t)found_key_be_char[j] << std::dec << " ";
-	    }
-	    std::cout << "\n";
-	    */
-
-	    if (ints_sorted_[i] != found_key)
-		std::cout << "i = " << i << "----------------------------------------------\n";
-
-	    
 	    ASSERT_EQ(ints_sorted_[i], found_key);
+
+	    it->Prev();
+	    if (i > 0) {
+	    	ASSERT_TRUE(it->Valid());
+	    	found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
+	    	found_key = be64toh(found_key);
+	    	ASSERT_EQ(ints_sorted_[i-1], found_key);
+	    }
+	    else {
+	    	ASSERT_FALSE(it->Valid());
+	    }
 	}
+
     }
 }
 
@@ -325,7 +316,6 @@ void FilterTest::query() {
 
     //setupDir();
     for (int i = 0; i < (int)datafiles_.size(); i++) {
-	//for (int i = 4; i < 6; i++) {
 	std::cout << datafiles_[i] << "----------------------------------\n";
 	initSingleConfig(options_vec_[i], datafiles_[i], key_type_vec_[i]);
 	pointQuerySingleConfig(key_type_vec_[i]);
@@ -352,5 +342,3 @@ int main (int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
-
-

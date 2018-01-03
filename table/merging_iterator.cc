@@ -25,8 +25,6 @@
 #include "util/stop_watch.h"
 #include "util/sync_point.h"
 
-#include <iostream>
-
 namespace rocksdb {
 // Without anonymous namespace here, we fail the warning -Wmissing-prototypes
 namespace {
@@ -114,13 +112,13 @@ class MergingIterator : public InternalIterator {
 
   virtual void Seek(const Slice& target) override {
       // huanchen
-      std::vector<int> min_indexes;
-      FilterChildrenForward(target, min_indexes);
+      minHeap_indexes_.clear();
+      FilterChildrenForward(target, true, minHeap_indexes_);
 
     ClearHeaps();
     //for (auto& child : children_) { // ori
-    for (int i = 0; i < (int)min_indexes.size(); i++) { // huanchen
-	int idx = min_indexes[i]; // huanchen
+    for (int i = 0; i < (int)minHeap_indexes_.size(); i++) { // huanchen
+	int idx = minHeap_indexes_[i]; // huanchen
 	auto& child = children_[idx]; // huanchen
       {
         PERF_TIMER_GUARD(seek_child_seek_time);
@@ -142,15 +140,15 @@ class MergingIterator : public InternalIterator {
 
   virtual void SeekForPrev(const Slice& target) override {
       // huanchen
-      std::vector<int> max_indexes;
-      FilterChildrenBackward(target, max_indexes);
+      maxHeap_indexes_.clear();
+      FilterChildrenBackward(target, true, maxHeap_indexes_);
       
     ClearHeaps();
     InitMaxHeap();
 
     //for (auto& child : children_) { // ori
-    for (int i = 0; i < (int)max_indexes.size(); i++) { // huanchen
-	int idx = max_indexes[i]; // huanchen
+    for (int i = 0; i < (int)maxHeap_indexes_.size(); i++) { // huanchen
+	int idx = maxHeap_indexes_[i]; // huanchen
 	auto& child = children_[idx]; // huanchen
       {
         PERF_TIMER_GUARD(seek_child_seek_time);
@@ -169,31 +167,42 @@ class MergingIterator : public InternalIterator {
       current_ = CurrentReverse();
     }
   }
-    /*
-  virtual void SeekForPrev(const Slice& target) override {
-    ClearHeaps();
-    InitMaxHeap();
 
-    for (auto& child : children_) {
-      {
-        PERF_TIMER_GUARD(seek_child_seek_time);
-        child.SeekForPrev(target);
-      }
-      PERF_COUNTER_ADD(seek_child_seek_count, 1);
+    // huanchen
+    virtual void Next() override {
+	if (minHeap_indexes_.size() < children_.size()) {
+	    // huanchen
+	    minHeap_indexes_.clear();
+	    
+	    size_t target_len = current_->key().size();
+	    char* target_buf = new char[target_len];
+	    memcpy(target_buf, current_->key().data(), target_len);
+	    Slice target(target_buf, target_len);
+	    FilterChildrenForward(target, true, minHeap_indexes_);
 
-      if (child.Valid()) {
-        PERF_TIMER_GUARD(seek_max_heap_time);
-        maxHeap_->push(&child);
-      }
+	    ClearHeaps();
+	    for (int i = 0; i < (int)minHeap_indexes_.size(); i++) {
+		int idx = minHeap_indexes_[i];
+		auto& child = children_[idx];
+		child.Seek(target);
+
+		if (child.Valid()) {
+		    if (child.key().compare(target) == 0)
+			child.Next();
+		}
+
+		if (child.Valid())
+		    minHeap_.push(&child);
+	    }
+	    direction_ = kForward;
+	    current_ = CurrentForward();
+	} else {
+	    NextFallBack();
+	}
     }
-    direction_ = kReverse;
-    {
-      PERF_TIMER_GUARD(seek_max_heap_time);
-      current_ = CurrentReverse();
-    }
-  }
-    */
-  virtual void Next() override {
+
+    //virtual void Next() override { // ori
+  virtual void NextFallBack() { // huanchen
     assert(Valid());
 
     // Ensure that all children are positioned after key().
@@ -226,6 +235,40 @@ class MergingIterator : public InternalIterator {
   }
 
   virtual void Prev() override {
+      if (maxHeap_indexes_.size() < children_.size()) {
+	    // huanchen
+	    maxHeap_indexes_.clear();
+	    
+	    size_t target_len = current_->key().size();
+	    char* target_buf = new char[target_len];
+	    memcpy(target_buf, current_->key().data(), target_len);
+	    Slice target(target_buf, target_len);
+
+	    FilterChildrenBackward(target, true, maxHeap_indexes_);
+
+	    ClearHeaps();
+	    for (int i = 0; i < (int)maxHeap_indexes_.size(); i++) {
+		int idx = maxHeap_indexes_[i];
+		auto& child = children_[idx];
+		child.SeekForPrev(target);
+
+		if (child.Valid()) {
+		    if (child.key().compare(target) == 0)
+			child.Prev();
+		}
+
+		if (child.Valid())
+		    maxHeap_->push(&child);
+	    }
+	    direction_ = kReverse;
+	    current_ = CurrentReverse();
+      } else {
+	  PrevFallBack();
+      }
+  }
+    
+    //virtual void Prev() override { // ori
+  virtual void PrevFallBack() { // huanchen
     assert(Valid());
     // Ensure that all children are positioned before key().
     // If we are moving in the reverse direction, it is already
@@ -356,7 +399,10 @@ class MergingIterator : public InternalIterator {
   MergerMinIterHeap minHeap_;
   bool prefix_seek_mode_;
 
-    const Slice* upper_key_; // huanchen
+    // huanchen
+    const Slice* upper_key_;
+    std::vector<int> minHeap_indexes_;
+    std::vector<int> maxHeap_indexes_;
 
   // Max heap is used for reverse iteration, which is way less common than
   // forward.  Lazily initialize it to save memory.
@@ -367,19 +413,6 @@ class MergingIterator : public InternalIterator {
     // helper
     bool isPrefix(const std::string& a, const unsigned a_bitlen,
 		  const std::string& b, const unsigned b_bitlen) {
-	/*
-	std::cout << "a = ";
-	for (int j = 0; j < (int)a.size(); j++)
-	    std::cout << std::hex << (uint16_t)a[j] << " ";
-	std::cout << std::dec << "\n";
-	std::cout << "a_bitlen = " << a_bitlen << "\n";
-
-	std::cout << "b = ";
-	for (int j = 0; j < (int)b.size(); j++)
-	    std::cout << std::hex << (uint16_t)b[j] << " ";
-	std::cout << std::dec << "\n";
-	std::cout << "b_bitlen = " << b_bitlen << "\n";
-	*/
 	std::string s, l; // shorter, longer string
 	unsigned s_bitlen;
 	if ((a.length() < b.length())
@@ -444,7 +477,7 @@ class MergingIterator : public InternalIterator {
     }
 
     // huanchen
-    void FilterChildrenForward(const Slice& target, std::vector<int>& min_indexes) {
+    void FilterChildrenForward(const Slice& target, const bool inclusive, std::vector<int>& min_indexes) {
 	std::string target_str = std::string(target.data(), target.size());
 	std::string filter_key_min;
 	unsigned bitlen_min = 0;
@@ -454,7 +487,7 @@ class MergingIterator : public InternalIterator {
 	    auto& child = children_[idx];
 	    unsigned bitlen = 0;
 	    std::string filter_key_cur
-		= child.FilterSeek(target, &bitlen).ToString();
+		= child.FilterSeek(target, &bitlen, inclusive).ToString();
 	    if (bitlen == 0)
 		bitlen = 8;
 
@@ -494,7 +527,7 @@ class MergingIterator : public InternalIterator {
     }
 
         // huanchen
-    void FilterChildrenBackward(const Slice& target, std::vector<int>& max_indexes) {
+    void FilterChildrenBackward(const Slice& target, const bool inclusive, std::vector<int>& max_indexes) {
 	std::string target_str = std::string(target.data(), target.size());
 	std::string filter_key_max;
 	unsigned bitlen_max = 0;
@@ -504,14 +537,7 @@ class MergingIterator : public InternalIterator {
 	    auto& child = children_[idx];
 	    unsigned bitlen = 0;
 	    std::string filter_key_cur
-		= child.FilterSeekForPrev(target, &bitlen).ToString();
-	    /*
-	    std::cout << "\tidx = " << idx << "\t";
-	    std::cout << "filter_key_cur.size() = " << filter_key_cur.size() << "\t";
-	    for (int j = 0; j < (int)filter_key_cur.size(); j++)
-	    	std::cout << std::hex << (uint16_t)filter_key_cur[j] << " ";
-	    std::cout << std::dec << "\n";
-	    */
+		= child.FilterSeekForPrev(target, &bitlen, inclusive).ToString();
 	    if (bitlen == 0)
 		bitlen = 8;
 
@@ -534,18 +560,6 @@ class MergingIterator : public InternalIterator {
 		max_indexes.clear();
 		max_indexes.push_back(idx);
 	    }
-	    /*
-	    std::cout << "\tfilter_key_max = ";
-	    for (int j = 0; j < (int)filter_key_max.size(); j++)
-	    	std::cout << std::hex << (uint16_t)filter_key_max[j] << " ";
-	    std::cout << std::dec << "\n";
-
-	    std::cout << "\tmax indexes: ";
-	    for (int k = 0; k < (int)max_indexes.size(); k++) {
-	    	std::cout << max_indexes[k] << " ";
-	    }
-	    std::cout << "\n";
-	    */
 	}
 
 	for (int i = 0; i < (int)no_filter_indexes.size(); i++)
@@ -553,13 +567,6 @@ class MergingIterator : public InternalIterator {
 
 	for (int i = 0; i < (int)target_prefix_indexes.size(); i++)
 	    max_indexes.push_back(target_prefix_indexes[i]);
-	/*
-	std::cout << "\tmax indexes: ";
-	for (int k = 0; k < (int)max_indexes.size(); k++) {
-	    std::cout << max_indexes[k] << " ";
-	}
-	std::cout << "\n";
-	*/
     }
 
   void SwitchToForward();

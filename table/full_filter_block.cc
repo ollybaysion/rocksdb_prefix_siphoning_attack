@@ -111,6 +111,7 @@ bool FullFilterBlockReader::MayMatch(const Slice& entry) {
 
 // huanchen
 Slice FullFilterBlockReader::Seek(const Slice& key, unsigned* bitlen,
+				  const bool inclusive,
 				  uint64_t block_offset,
 				  const bool no_io,
 				  const Slice* const const_ikey_ptr) {
@@ -119,13 +120,14 @@ Slice FullFilterBlockReader::Seek(const Slice& key, unsigned* bitlen,
 	return Slice();
     }
     if (contents_.size() != 0)  {
-	return filter_bits_reader_->Seek(key, bitlen);
+	return filter_bits_reader_->Seek(key, bitlen, inclusive);
     }
     return Slice();
 }
 
 // huanchen
 Slice FullFilterBlockReader::SeekForPrev(const Slice& key, unsigned* bitlen,
+					 const bool inclusive,
 					 uint64_t block_offset,
 					 const bool no_io,
 					 const Slice* const const_ikey_ptr) {
@@ -134,7 +136,7 @@ Slice FullFilterBlockReader::SeekForPrev(const Slice& key, unsigned* bitlen,
 	return Slice();
     }
     if (contents_.size() != 0)  {
-	return filter_bits_reader_->SeekForPrev(key, bitlen);
+	return filter_bits_reader_->SeekForPrev(key, bitlen, inclusive);
     }
     return Slice();
 }
