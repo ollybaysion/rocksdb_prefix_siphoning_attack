@@ -268,15 +268,18 @@ void FilterTest::rangeQuerySingleConfig(int key_type) {
 	    found_key = be64toh(found_key);
 	    ASSERT_EQ(ints_sorted_[i+1], found_key);
 
-	    it->Next();
-	    if (i < kTestSize - 2) {
-	    	ASSERT_TRUE(it->Valid());
-	    	found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
-	    	found_key = be64toh(found_key);
-	    	ASSERT_EQ(ints_sorted_[i+2], found_key);
-	    }
-	    else {
-	    	ASSERT_FALSE(it->Valid());
+	    for (int j = 0; j < 10; j++) {
+		if (it->Valid()) {
+		    it->Next();
+		    if ((i + j + 2) < kTestSize) {
+			ASSERT_TRUE(it->Valid());
+			found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
+			found_key = be64toh(found_key);
+			ASSERT_EQ(ints_sorted_[i+j+2], found_key);
+		    } else {
+			ASSERT_FALSE(it->Valid());
+		    }
+		}
 	    }
 	}
 
@@ -292,15 +295,18 @@ void FilterTest::rangeQuerySingleConfig(int key_type) {
 	    found_key = be64toh(found_key);
 	    ASSERT_EQ(ints_sorted_[i], found_key);
 
-	    it->Prev();
-	    if (i > 0) {
-	    	ASSERT_TRUE(it->Valid());
-	    	found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
-	    	found_key = be64toh(found_key);
-	    	ASSERT_EQ(ints_sorted_[i-1], found_key);
-	    }
-	    else {
-	    	ASSERT_FALSE(it->Valid());
+	    for (int j = 0; j < 10; j++) {
+		if (it->Valid()) {
+		    it->Prev();
+		    if ((i - j) > 0) {
+			ASSERT_TRUE(it->Valid());
+			found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
+			found_key = be64toh(found_key);
+			ASSERT_EQ(ints_sorted_[i-j-1], found_key);
+		    } else {
+			ASSERT_FALSE(it->Valid());
+		    }
+		}
 	    }
 	}
 
