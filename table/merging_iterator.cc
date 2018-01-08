@@ -59,6 +59,11 @@ class MergingIterator : public InternalIterator {
       }
     }
     current_ = CurrentForward();
+
+    // huanchen
+    target_ = std::string();
+    current_index_ = -1;
+    suffix_bitlen_ = 8;
   }
 
   virtual void AddIterator(InternalIterator* iter) {
@@ -83,18 +88,14 @@ class MergingIterator : public InternalIterator {
   virtual bool Valid() const override { return (current_ != nullptr); }
 
   virtual void SeekToFirst() override {
-    ClearHeaps();
-    for (auto& child : children_) {
-      child.SeekToFirst();
-      if (child.Valid()) {
-        minHeap_.push(&child);
-      }
-    }
-    direction_ = kForward;
-    current_ = CurrentForward();
+      // huanchen
+      target_ = std::string("\0\0\0\0\0\0\0\0", 8);
+      Slice target = Slice(target_);
+      Seek(target);
   }
 
   virtual void SeekToLast() override {
+      // TODO: rewrite
     ClearHeaps();
     InitMaxHeap();
     for (auto& child : children_) {
@@ -129,7 +130,10 @@ class MergingIterator : public InternalIterator {
       current_index_ = GetMinKeyIndex();
 
       direction_ = kForward;
-      current_ = &children_[current_index_];
+      if (current_index_ < 0)
+	  current_ = nullptr;
+      else
+	  current_ = &children_[current_index_];
   }
 
   virtual void SeekForPrev(const Slice& target) override {
@@ -149,7 +153,10 @@ class MergingIterator : public InternalIterator {
       current_index_ = GetMaxKeyIndex();
 
       direction_ = kReverse;
-      current_ = &children_[current_index_];
+      if (current_index_ < 0)
+	  current_ = nullptr;
+      else
+	  current_ = &children_[current_index_];
   }
 
   // huanchen
