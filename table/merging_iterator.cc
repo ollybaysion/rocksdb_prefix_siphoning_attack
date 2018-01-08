@@ -25,6 +25,8 @@
 #include "util/stop_watch.h"
 #include "util/sync_point.h"
 
+#include <iostream>
+
 namespace rocksdb {
 // Without anonymous namespace here, we fail the warning -Wmissing-prototypes
 namespace {
@@ -112,226 +114,89 @@ class MergingIterator : public InternalIterator {
 
   virtual void Seek(const Slice& target) override {
       // huanchen
-      minHeap_indexes_.clear();
-      FilterChildrenForward(target, true, minHeap_indexes_);
+      children_key_.clear();
+      children_is_real_key_.clear();
+      children_order_.clear();
 
-    ClearHeaps();
-    //for (auto& child : children_) { // ori
-    for (int i = 0; i < (int)minHeap_indexes_.size(); i++) { // huanchen
-	int idx = minHeap_indexes_[i]; // huanchen
-	auto& child = children_[idx]; // huanchen
-      {
-        PERF_TIMER_GUARD(seek_child_seek_time);
-        child.Seek(target);
-      }
-      PERF_COUNTER_ADD(seek_child_seek_count, 1);
+      target_ = std::string(target.data(), target.size());
 
-      if (child.Valid()) {
-        PERF_TIMER_GUARD(seek_min_heap_time);
-        minHeap_.push(&child);
-      }
-    }
-    direction_ = kForward;
-    {
-      PERF_TIMER_GUARD(seek_min_heap_time);
-      current_ = CurrentForward();
-    }
+      FillinFilterKeysForward(target, true);
+      std::vector<int> min_indexes;
+      GetFilterMinKeyIndexes(target, min_indexes);
+
+      FillinRealKeysForward(target, min_indexes);
+      OrderKeysMin();
+      current_index_ = GetMinKeyIndex();
+
+      direction_ = kForward;
+      current_ = &children_[current_index_];
   }
 
   virtual void SeekForPrev(const Slice& target) override {
       // huanchen
-      maxHeap_indexes_.clear();
-      FilterChildrenBackward(target, true, maxHeap_indexes_);
-      
-    ClearHeaps();
-    InitMaxHeap();
+      children_key_.clear();
+      children_is_real_key_.clear();
+      children_order_.clear();
 
-    //for (auto& child : children_) { // ori
-    for (int i = 0; i < (int)maxHeap_indexes_.size(); i++) { // huanchen
-	int idx = maxHeap_indexes_[i]; // huanchen
-	auto& child = children_[idx]; // huanchen
-      {
-        PERF_TIMER_GUARD(seek_child_seek_time);
-        child.SeekForPrev(target);
-      }
-      PERF_COUNTER_ADD(seek_child_seek_count, 1);
+      target_ = std::string(target.data(), target.size());
 
-      if (child.Valid()) {
-        PERF_TIMER_GUARD(seek_max_heap_time);
-        maxHeap_->push(&child);
-      }
-    }
-    direction_ = kReverse;
-    {
-      PERF_TIMER_GUARD(seek_max_heap_time);
-      current_ = CurrentReverse();
-    }
+      FillinFilterKeysBackward(target, true);
+      std::vector<int> max_indexes;
+      GetFilterMaxKeyIndexes(target, max_indexes);
+
+      FillinRealKeysBackward(target, max_indexes);
+      OrderKeysMax();
+      current_index_ = GetMaxKeyIndex();
+
+      direction_ = kReverse;
+      current_ = &children_[current_index_];
   }
 
-    // huanchen
-    virtual void Next() override {
-	if (minHeap_indexes_.size() < children_.size()) {
-	    // huanchen
-	    minHeap_indexes_.clear();
-	    
-	    size_t target_len = current_->key().size();
-	    char* target_buf = new char[target_len];
-	    memcpy(target_buf, current_->key().data(), target_len);
-	    Slice target(target_buf, target_len);
-	    FilterChildrenForward(target, true, minHeap_indexes_);
+  // huanchen
+  virtual void Next() override {
+      /*
+      std::cout << "=================================================\n";
+      std::cout << "children order:\n";
+      for (int i = 0; i < (int)children_order_.size(); i++)
+	  std::cout << children_order_[i] << " ";
+      std::cout << "\n";
 
-	    ClearHeaps();
-	    for (int i = 0; i < (int)minHeap_indexes_.size(); i++) {
-		int idx = minHeap_indexes_[i];
-		auto& child = children_[idx];
-		child.Seek(target);
+      std::cout << "children is real key:\n";
+      for (int i = 0; i < (int)children_is_real_key_.size(); i++)
+	  std::cout << children_is_real_key_[i] << " ";
+      std::cout << "\n";
 
-		if (child.Valid()) {
-		    if (child.key().compare(target) == 0)
-			child.Next();
-		}
+      std::cout << "current_index_ = " << current_index_ << "\n\n";
+      */
+      current_->Next();
+      if (current_->Valid())
+	  children_key_[current_index_] = std::string(current_->key().data(), current_->key().size());
+      else
+	  children_key_[current_index_] = std::string();
 
-		if (child.Valid())
-		    minHeap_.push(&child);
-	    }
-	    direction_ = kForward;
-	    current_ = CurrentForward();
-	} else {
-	    NextFallBack();
-	}
-    }
-
-    //virtual void Next() override { // ori
-  virtual void NextFallBack() { // huanchen
-    assert(Valid());
-
-    // Ensure that all children are positioned after key().
-    // If we are moving in the forward direction, it is already
-    // true for all of the non-current children since current_ is
-    // the smallest child and key() == current_->key().
-    if (direction_ != kForward) {
-      SwitchToForward();
-      // The loop advanced all non-current children to be > key() so current_
-      // should still be strictly the smallest key.
-      assert(current_ == CurrentForward());
-    }
-
-    // For the heap modifications below to be correct, current_ must be the
-    // current top of the heap.
-    assert(current_ == CurrentForward());
-
-    // as the current points to the current record. move the iterator forward.
-    current_->Next();
-    if (current_->Valid()) {
-      // current is still valid after the Next() call above.  Call
-      // replace_top() to restore the heap property.  When the same child
-      // iterator yields a sequence of keys, this is cheap.
-      minHeap_.replace_top(current_);
-    } else {
-      // current stopped being valid, remove it from the heap.
-      minHeap_.pop();
-    }
-    current_ = CurrentForward();
+      ReorderKeysMin(current_index_);
+      current_index_ = GetMinKeyIndex();
+      direction_ = kForward;
+      if (current_index_ < 0)
+	  current_ = nullptr;
+      else
+	  current_ = &children_[current_index_];
   }
 
   virtual void Prev() override {
-      if (maxHeap_indexes_.size() < children_.size()) {
-	    // huanchen
-	    maxHeap_indexes_.clear();
-	    
-	    size_t target_len = current_->key().size();
-	    char* target_buf = new char[target_len];
-	    memcpy(target_buf, current_->key().data(), target_len);
-	    Slice target(target_buf, target_len);
+      current_->Prev();
+      if (current_->Valid())
+	  children_key_[current_index_] = std::string(current_->key().data(), current_->key().size());
+      else
+	  children_key_[current_index_] = std::string();
 
-	    FilterChildrenBackward(target, true, maxHeap_indexes_);
-
-	    ClearHeaps();
-	    for (int i = 0; i < (int)maxHeap_indexes_.size(); i++) {
-		int idx = maxHeap_indexes_[i];
-		auto& child = children_[idx];
-		child.SeekForPrev(target);
-
-		if (child.Valid()) {
-		    if (child.key().compare(target) == 0)
-			child.Prev();
-		}
-
-		if (child.Valid())
-		    maxHeap_->push(&child);
-	    }
-	    direction_ = kReverse;
-	    current_ = CurrentReverse();
-      } else {
-	  PrevFallBack();
-      }
-  }
-    
-    //virtual void Prev() override { // ori
-  virtual void PrevFallBack() { // huanchen
-    assert(Valid());
-    // Ensure that all children are positioned before key().
-    // If we are moving in the reverse direction, it is already
-    // true for all of the non-current children since current_ is
-    // the largest child and key() == current_->key().
-    if (direction_ != kReverse) {
-      // Otherwise, retreat the non-current children.  We retreat current_
-      // just after the if-block.
-      ClearHeaps();
-      InitMaxHeap();
-      for (auto& child : children_) {
-        if (&child != current_) {
-          if (!prefix_seek_mode_) {
-            child.Seek(key());
-            if (child.Valid()) {
-              // Child is at first entry >= key().  Step back one to be < key()
-              TEST_SYNC_POINT_CALLBACK("MergeIterator::Prev:BeforePrev",
-                                       &child);
-              child.Prev();
-            } else {
-              // Child has no entries >= key().  Position at last entry.
-              TEST_SYNC_POINT("MergeIterator::Prev:BeforeSeekToLast");
-              child.SeekToLast();
-            }
-          } else {
-            child.SeekForPrev(key());
-            if (child.Valid() && comparator_->Equal(key(), child.key())) {
-              child.Prev();
-            }
-          }
-        }
-        if (child.Valid()) {
-          maxHeap_->push(&child);
-        }
-      }
+      ReorderKeysMax(current_index_);
+      current_index_ = GetMaxKeyIndex();
       direction_ = kReverse;
-      if (!prefix_seek_mode_) {
-        // Note that we don't do assert(current_ == CurrentReverse()) here
-        // because it is possible to have some keys larger than the seek-key
-        // inserted between Seek() and SeekToLast(), which makes current_ not
-        // equal to CurrentReverse().
-        current_ = CurrentReverse();
-      }
-      // The loop advanced all non-current children to be < key() so current_
-      // should still be strictly the smallest key.
-      assert(current_ == CurrentReverse());
-    }
-
-    // For the heap modifications below to be correct, current_ must be the
-    // current top of the heap.
-    assert(current_ == CurrentReverse());
-
-    current_->Prev();
-    if (current_->Valid()) {
-      // current is still valid after the Prev() call above.  Call
-      // replace_top() to restore the heap property.  When the same child
-      // iterator yields a sequence of keys, this is cheap.
-      maxHeap_->replace_top(current_);
-    } else {
-      // current stopped being valid, remove it from the heap.
-      maxHeap_->pop();
-    }
-    current_ = CurrentReverse();
+      if (current_index_ < 0)
+	  current_ = nullptr;
+      else
+	  current_ = &children_[current_index_];
   }
 
   virtual Slice key() const override {
@@ -400,9 +265,13 @@ class MergingIterator : public InternalIterator {
   bool prefix_seek_mode_;
 
     // huanchen
+    std::string target_;
     const Slice* upper_key_;
-    std::vector<int> minHeap_indexes_;
-    std::vector<int> maxHeap_indexes_;
+    std::vector<std::string> children_key_;
+    std::vector<bool> children_is_real_key_;
+    std::vector<int> children_order_;
+    int current_index_;
+    unsigned suffix_bitlen_;
 
   // Max heap is used for reverse iteration, which is way less common than
   // forward.  Lazily initialize it to save memory.
@@ -450,7 +319,6 @@ class MergingIterator : public InternalIterator {
 	    s_bitlen = b_bitlen;
 	    order_reversed = true;
 	}
-
 	if (s_bitlen == 8) {
 	    int compare = memcmp(s.data(), l.data(), s.length());
 	    if (order_reversed) return (0 - compare);
@@ -477,96 +345,410 @@ class MergingIterator : public InternalIterator {
     }
 
     // huanchen
-    void FilterChildrenForward(const Slice& target, const bool inclusive, std::vector<int>& min_indexes) {
-	std::string target_str = std::string(target.data(), target.size());
-	std::string filter_key_min;
-	unsigned bitlen_min = 0;
-	std::vector<int> no_filter_indexes;
-	std::vector<int> target_prefix_indexes;
+    inline void FillinFilterKeysForward(const Slice& target, const bool inclusive) {
+	suffix_bitlen_ = 8;
 	for (int idx = 0; idx < (int)children_.size(); idx++) {
 	    auto& child = children_[idx];
 	    unsigned bitlen = 0;
-	    std::string filter_key_cur
+	    std::string filter_key
 		= child.FilterSeek(target, &bitlen, inclusive).ToString();
-	    if (bitlen == 0)
-		bitlen = 8;
+	    if (bitlen > 0)
+		suffix_bitlen_ = bitlen;
+	    children_key_.push_back(filter_key);
+	    children_is_real_key_.push_back(false);
+	    children_order_.push_back(0);
+	}
+    }
 
-	    if (filter_key_cur.size() == 0) {
+    // huanchen
+    inline void FillinFilterKeysBackward(const Slice& target, const bool inclusive) {
+	suffix_bitlen_ = 8;
+	for (int idx = 0; idx < (int)children_.size(); idx++) {
+	    auto& child = children_[idx];
+	    unsigned bitlen = 0;
+	    std::string filter_key
+		= child.FilterSeekForPrev(target, &bitlen, inclusive).ToString();
+	    if (bitlen > 0)
+		suffix_bitlen_ = bitlen;
+	    children_key_.push_back(filter_key);
+	    children_is_real_key_.push_back(false);
+	    children_order_.push_back(0);
+	}
+    }
+
+    // huanchen
+    inline void GetFilterMinKeyIndexes(const Slice& target, std::vector<int>& min_indexes) {
+	std::string target_str = std::string(target.data(), target.size());
+	std::string filter_key_min;
+	std::vector<int> no_filter_indexes, target_prefix_indexes;
+	for (int idx = 0; idx < (int)children_key_.size(); idx++) {
+	    if (children_key_[idx].size() == 0) {
 		no_filter_indexes.push_back(idx);
 		continue;
 	    }
-
 	    if (upper_key_ != nullptr) {
-		std::string upper_key = std::string(upper_key_->data(), upper_key_->size());
-		int compare = compareKeys(filter_key_cur, bitlen, upper_key, 8);
-		if (compare > 0)
+		std::string upper_key
+		    = std::string(upper_key_->data(), upper_key_->size());
+		if (compareKeys(children_key_[idx], suffix_bitlen_, upper_key, 8) > 0)
 		    continue;
 	    }
-
-	    if (isPrefix(filter_key_cur, bitlen, target_str, 8)) {
+	    if (isPrefix(children_key_[idx], suffix_bitlen_, target_str, 8)) {
 		target_prefix_indexes.push_back(idx);
 	    } else if (filter_key_min.size() == 0) {
-		filter_key_min = filter_key_cur;
-		bitlen_min = bitlen;
+		filter_key_min = children_key_[idx];
 		min_indexes.push_back(idx);
-	    } else if (isPrefix(filter_key_cur, bitlen, filter_key_min, bitlen_min)) {
+	    } else if (isPrefix(children_key_[idx], suffix_bitlen_, filter_key_min, suffix_bitlen_)) {
 		min_indexes.push_back(idx);
-	    } else if (compareKeys(filter_key_cur, bitlen, filter_key_min, bitlen_min) < 0) {
-		filter_key_min = filter_key_cur;
-		bitlen_min = bitlen;
+	    } else if (compareKeys(children_key_[idx], suffix_bitlen_, filter_key_min, suffix_bitlen_) < 0) {
+		filter_key_min = children_key_[idx];
 		min_indexes.clear();
 		min_indexes.push_back(idx);
 	    }
 	}
-
 	for (int i = 0; i < (int)no_filter_indexes.size(); i++)
 	    min_indexes.push_back(no_filter_indexes[i]);
-
 	for (int i = 0; i < (int)target_prefix_indexes.size(); i++)
 	    min_indexes.push_back(target_prefix_indexes[i]);
     }
 
-        // huanchen
-    void FilterChildrenBackward(const Slice& target, const bool inclusive, std::vector<int>& max_indexes) {
+    // huanchen
+    inline void GetFilterMaxKeyIndexes(const Slice& target, std::vector<int>& max_indexes) {
 	std::string target_str = std::string(target.data(), target.size());
 	std::string filter_key_max;
-	unsigned bitlen_max = 0;
-	std::vector<int> no_filter_indexes;
-	std::vector<int> target_prefix_indexes;
-	for (int idx = 0; idx < (int)children_.size(); idx++) {
-	    auto& child = children_[idx];
-	    unsigned bitlen = 0;
-	    std::string filter_key_cur
-		= child.FilterSeekForPrev(target, &bitlen, inclusive).ToString();
-	    if (bitlen == 0)
-		bitlen = 8;
-
-	    if (filter_key_cur.size() == 0) {
+	std::vector<int> no_filter_indexes, target_prefix_indexes;
+	for (int idx = 0; idx < (int)children_key_.size(); idx++) {
+	    if (children_key_[idx].size() == 0) {
 		no_filter_indexes.push_back(idx);
 		continue;
 	    }
 
-	    if (isPrefix(filter_key_cur, bitlen, target_str, 8)) {
+	    if (isPrefix(children_key_[idx], suffix_bitlen_, target_str, 8)) {
 		target_prefix_indexes.push_back(idx);
 	    } else if (filter_key_max.size() == 0) {
-		filter_key_max = filter_key_cur;
-		bitlen_max = bitlen;
+		filter_key_max = children_key_[idx];
 		max_indexes.push_back(idx);
-	    } else if (isPrefix(filter_key_cur, bitlen, filter_key_max, bitlen_max)) {
+	    } else if (isPrefix(children_key_[idx], suffix_bitlen_, filter_key_max, suffix_bitlen_)) {
 		max_indexes.push_back(idx);
-	    } else if (compareKeys(filter_key_cur, bitlen, filter_key_max, bitlen_max) > 0) {
-		filter_key_max = filter_key_cur;
-		bitlen_max = bitlen;
+	    } else if (compareKeys(children_key_[idx], suffix_bitlen_, filter_key_max, suffix_bitlen_) > 0) {
+		filter_key_max = children_key_[idx];
 		max_indexes.clear();
 		max_indexes.push_back(idx);
 	    }
 	}
-
 	for (int i = 0; i < (int)no_filter_indexes.size(); i++)
 	    max_indexes.push_back(no_filter_indexes[i]);
-
 	for (int i = 0; i < (int)target_prefix_indexes.size(); i++)
 	    max_indexes.push_back(target_prefix_indexes[i]);
+    }
+
+    // huanchen
+    inline void FillinSingleRealKeyForward(const Slice& target, int idx) {
+	auto& child = children_[idx];
+	{
+	    PERF_TIMER_GUARD(seek_child_seek_time);
+	    child.Seek(target);
+	}
+	PERF_COUNTER_ADD(seek_child_seek_count, 1);
+	if (child.Valid())
+	    children_key_[idx] = std::string(child.key().data(), child.key().size());
+	else
+	    children_key_[idx] = std::string();
+	children_is_real_key_[idx] = true;
+    }
+
+    // huanchen
+    inline void FillinRealKeysForward(const Slice& target, std::vector<int>& indexes) {
+	for (int i = 0; i < (int)indexes.size(); i++) {
+	    int idx = indexes[i];
+	    FillinSingleRealKeyForward(target, idx);
+	}
+    }
+
+    // huanchen
+    inline void FillinSingleRealKeyBackward(const Slice& target, int idx) {	
+	auto& child = children_[idx];
+	{
+	    PERF_TIMER_GUARD(seek_child_seek_time);
+	    child.SeekForPrev(target);
+	}
+	PERF_COUNTER_ADD(seek_child_seek_count, 1);
+	if (child.Valid())
+	    children_key_[idx] = std::string(child.key().data(), child.key().size());
+	else
+	    children_key_[idx] = std::string();
+	children_is_real_key_[idx] = true;
+    }
+
+    // huanchen
+    inline void FillinRealKeysBackward(const Slice& target, std::vector<int>& indexes) {
+	for (int i = 0; i < (int)indexes.size(); i++) {
+	    int idx = indexes[i];
+	    FillinSingleRealKeyBackward(target, idx);
+	}
+    }
+
+    // huanchen
+    inline void OrderKeys() {
+	for (int i = 0; i < (int)children_key_.size(); i++) {
+	    if (children_key_[i].size() == 0) {
+		children_order_[i] = -1;
+		continue;
+	    }
+	    unsigned bitlen_i = children_is_real_key_[i] ? 8 : suffix_bitlen_;
+	    for (int j = i + 1; j < (int)children_key_.size(); j++) {
+		if (children_key_[j].size() != 0) {
+		    unsigned bitlen_j = children_is_real_key_[j] ? 8 : suffix_bitlen_;
+		    int compare = compareKeys(children_key_[i], bitlen_i,
+					      children_key_[j], bitlen_j);
+		    if (compare < 0)
+			children_order_[j]++;
+		    else
+			children_order_[i]++;
+		}
+	    }
+	}
+    }
+
+    // huanchen
+    inline void OrderKeysMin() {
+	OrderKeys();
+	// deal with partial key false positive
+	for (int i = 0; i < (int)children_key_.size(); i++) {
+	    if (children_is_real_key_[i])
+		continue;
+	    int min_diff = (int)children_order_.size();
+	    int min_diff_index = -1;
+	    for (int j = 0; j < (int)children_order_.size(); j++) {
+		int diff = children_order_[j] - children_order_[i];
+		if ((diff > 0) && (diff < min_diff)) {
+		    min_diff = diff;
+		    min_diff_index = j;
+		}
+	    }
+	    if (min_diff_index > 0) {
+		unsigned bitlen
+		    = children_is_real_key_[min_diff_index] ? 8 : suffix_bitlen_;
+		if (isPrefix(children_key_[i], suffix_bitlen_,
+			     children_key_[min_diff_index], bitlen)) {
+		    children_order_[min_diff_index] = children_order_[i];
+		}
+	    }
+	}
+    }
+
+    // huanchen
+    inline void OrderKeysMax() {
+	OrderKeys();
+	// deal with partial key false positive
+	for (int i = 0; i < (int)children_key_.size(); i++) {
+	    if (children_is_real_key_[i])
+		continue;
+
+	    bool cont = true;
+	    while (cont) {
+		int min_diff = (int)children_order_.size();
+		int min_diff_index = -1;
+		for (int j = 0; j < (int)children_order_.size(); j++) {
+		    int diff = children_order_[j] - children_order_[i];
+		    if ((diff > 0) && (diff < min_diff)) {
+			min_diff = diff;
+			min_diff_index = j;
+		    }
+		}
+		if (min_diff_index > 0) {
+		    unsigned bitlen
+			= children_is_real_key_[min_diff_index] ? 8 : suffix_bitlen_;
+		    if (isPrefix(children_key_[i], suffix_bitlen_,
+				 children_key_[min_diff_index], bitlen)) {
+			children_order_[min_diff_index]--;
+			children_order_[i] = children_order_[min_diff_index];
+		    } else {
+			cont = false;
+		    }
+		}
+	    }
+	}
+    }
+
+    // huanchen
+    inline void ReorderKeysMin(int idx) {
+	assert(children_order_[idx] == 0);
+	assert(children_is_real_key_[idx] == true);
+	
+	if (children_key_[idx].size() == 0) {
+	    children_order_[idx] = -1;
+	    for (int i = 0; i < (int)children_key_.size(); i++) {
+		if (children_order_[i] > 0)
+		    children_order_[i]--;
+	    }
+	    return;
+	}
+	std::vector<bool> compared;
+	for (int i = 0; i < (int)children_order_.size(); i++)
+	    compared.push_back(false);
+	// deal with partial key false positive
+	for (int i = 0; i < (int)children_order_.size(); i++) {
+	    unsigned bitlen_i = children_is_real_key_[i] ? 8 : suffix_bitlen_;
+	    if (!children_is_real_key_[i]) {
+		if (isPrefix(children_key_[idx], 8,
+			     children_key_[i], bitlen_i)) {
+		    int tie_order = children_order_[i];
+		    for (int j = 0; j < (int)children_order_.size(); j++) {
+			if (children_order_[j] == tie_order) {
+			    children_order_[j]--;
+			    compared[j] = true;
+			}
+		    }
+		    continue;
+		}
+	    }
+	}
+	for (int i = 0; i < (int)children_order_.size(); i++) {
+	    if ((i == idx) || (children_order_[i] < 0) || compared[i])
+		continue;
+	    unsigned bitlen_i = children_is_real_key_[i] ? 8 : suffix_bitlen_;
+	    int compare = compareKeys(children_key_[idx], 8,
+				      children_key_[i], bitlen_i);
+	    if (compare > 0) {
+		children_order_[idx]++;
+		children_order_[i]--;
+	    }
+	}
+    }
+
+    // huanchen
+    inline void ReorderKeysMax(int idx) {
+	assert(children_is_real_key_[idx] == true);
+	
+	if (children_key_[idx].size() == 0) {
+	    children_order_[idx] = -1;
+	    return;
+	}
+	int tie_order = -1;
+	std::vector<bool> compared;
+	for (int i = 0; i < (int)children_order_.size(); i++)
+	    compared.push_back(false);
+	// deal with partial key false positive
+	for (int i = 0; i < (int)children_order_.size(); i++) {
+	    unsigned bitlen_i = children_is_real_key_[i] ? 8 : suffix_bitlen_;
+	    if (!children_is_real_key_[i]) {
+		if (isPrefix(children_key_[idx], 8,
+			     children_key_[i], bitlen_i)) {
+		    tie_order = children_order_[i];
+		    for (int j = 0; j < (int)children_order_.size(); j++) {
+			if (children_order_[j] == tie_order)
+			    compared[j] = true;
+		    }
+		    continue;
+		}
+	    }
+	}
+	for (int i = 0; i < (int)children_order_.size(); i++) {
+	    if ((i == idx) || (children_order_[i] < 0) || compared[i])
+		continue;
+	    unsigned bitlen_i = children_is_real_key_[i] ? 8 : suffix_bitlen_;
+	    int compare = compareKeys(children_key_[idx], 8,
+				      children_key_[i], bitlen_i);
+	    if (compare < 0) {
+		children_order_[idx]--;
+		children_order_[i]++;
+	    }
+	}
+	if (tie_order >= 0)
+	    children_order_[idx] = tie_order;
+    }
+
+    // huanchen
+    inline void OrderRealKeys(std::vector<int>& indexes) {
+	for (int i = 0; i < (int)indexes.size(); i++) {
+	    int idx = indexes[i];
+	    for (int j = i + 1; j < (int)indexes.size(); j++) {
+		int jdx = indexes[j];
+		int compare = compareKeys(children_key_[idx], 8,
+					  children_key_[jdx], 8);
+		if (compare < 0)
+		    children_order_[jdx]++;
+		else
+		    children_order_[idx]++;
+	    }
+	}
+    }
+
+    // huanchen
+    inline int BreakTieMin(std::vector<int>& indexes) {
+	if (indexes.size() == 0) {
+	    return -1; // reached end
+	} else {
+	    Slice target = Slice(target_);
+	    for (int i = 0; i < (int)indexes.size(); i++) {
+		int idx = indexes[i];
+		if (!children_is_real_key_[idx])
+		    FillinSingleRealKeyForward(target, idx);
+	    }
+	    if (indexes.size() == 1)
+		return indexes[0];
+	    OrderRealKeys(indexes);
+	    for (int i = 0; i < (int)indexes.size(); i++) {
+		int idx = indexes[i];
+		if (children_order_[idx] == 0)
+		    return idx;
+	    }
+	}
+	return -1; // error
+    }
+
+    // huanchen
+    inline int GetMinKeyIndex() {
+	std::vector<int> min_key_indexes;
+	for (int i = 0; i < (int)children_order_.size(); i++) {
+	    if (children_order_[i] == 0)
+		min_key_indexes.push_back(i);
+	}
+	return BreakTieMin(min_key_indexes);
+    }
+
+    // huanchen
+    inline int BreakTieMax(std::vector<int>& indexes) {
+	if (indexes.size() == 0) {
+	    return -1; // reached end
+	} else {
+	    Slice target = Slice(target_);
+	    for (int i = 0; i < (int)indexes.size(); i++) {
+		int idx = indexes[i];
+		if (!children_is_real_key_[idx])
+		    FillinSingleRealKeyBackward(target, idx);
+	    }
+	    if (indexes.size() == 1)
+		return indexes[0];
+	    OrderRealKeys(indexes);
+	    int max_order = -1;
+	    int max_index = -1;
+	    for (int i = 0; i < (int)indexes.size(); i++) {
+		int idx = indexes[i];
+		if (children_order_[idx] > max_order) {
+		    max_order = children_order_[idx];
+		    max_index = idx;
+		}
+	    }
+	    return max_index;
+	}
+	return -1; // error
+    }
+
+    // huanchen
+    inline int GetMaxKeyIndex() {
+	int max_order = -1;
+	for (int i = 0; i < (int)children_order_.size(); i++) {
+	    if (children_order_[i] > max_order)
+		max_order = children_order_[i];
+	}
+	if (max_order == -1) return -1; // reached end
+	std::vector<int> max_key_indexes;
+	for (int i = 0; i < (int)children_order_.size(); i++) {
+	    if (children_order_[i] == max_order)
+		max_key_indexes.push_back(i);
+	}
+	return BreakTieMax(max_key_indexes);
     }
 
   void SwitchToForward();
