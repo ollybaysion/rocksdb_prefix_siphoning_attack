@@ -255,7 +255,6 @@ void FilterTest::pointQuerySingleConfig(int key_type) {
 void FilterTest::rangeQuerySingleConfig(int key_type) {
     if (key_type == 1) {
 	Iterator* it = db_->NewIterator(ReadOptions());
-
 	for (int i = 0; i < kTestSize - 1; i++) {
 	    uint64_t key = ints_sorted_[i] + (ints_sorted_[i+1] - ints_sorted_[i]) / 2;
 	    key = htobe64(key);
@@ -322,7 +321,7 @@ void FilterTest::query() {
 
     //setupDir();
     for (int i = 0; i < (int)datafiles_.size(); i++) {
-	std::cout << datafiles_[i] << "----------------------------------\n";
+	std::cout << datafiles_[i] << "----------------------------------" << std::endl;
 	initSingleConfig(options_vec_[i], datafiles_[i], key_type_vec_[i]);
 	pointQuerySingleConfig(key_type_vec_[i]);
 	rangeQuerySingleConfig(key_type_vec_[i]);
