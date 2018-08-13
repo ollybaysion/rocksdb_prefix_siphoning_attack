@@ -5,15 +5,13 @@
 //
 #pragma once
 
-#include <deque>
-#include <limits>
-#include <list>
-#include <set>
 #include <string>
+#include <list>
 #include <vector>
+#include <set>
+#include <deque>
 
 #include "db/dbformat.h"
-#include "db/logs_with_prep_tracker.h"
 #include "db/memtable.h"
 #include "db/range_del_aggregator.h"
 #include "monitoring/instrumented_mutex.h"
@@ -211,10 +209,9 @@ class MemTableList {
   // Commit a successful flush in the manifest file
   Status InstallMemtableFlushResults(
       ColumnFamilyData* cfd, const MutableCFOptions& mutable_cf_options,
-      const autovector<MemTable*>& m, LogsWithPrepTracker* prep_tracker,
-      VersionSet* vset, InstrumentedMutex* mu, uint64_t file_number,
-      autovector<MemTable*>* to_delete, Directory* db_directory,
-      LogBuffer* log_buffer);
+      const autovector<MemTable*>& m, VersionSet* vset, InstrumentedMutex* mu,
+      uint64_t file_number, autovector<MemTable*>* to_delete,
+      Directory* db_directory, LogBuffer* log_buffer);
 
   // New memtables are inserted at the front of the list.
   // Takes ownership of the referenced held on *m by the caller of Add().
@@ -226,9 +223,6 @@ class MemTableList {
   // Returns an estimate of the number of bytes of data used by
   // the unflushed mem-tables.
   size_t ApproximateUnflushedMemTablesMemoryUsage();
-
-  // Returns an estimate of the timestamp of the earliest key.
-  uint64_t ApproximateOldestKeyTime() const;
 
   // Request a flush of all existing memtables to storage.  This will
   // cause future calls to IsFlushPending() to return true if this list is
@@ -245,26 +239,7 @@ class MemTableList {
 
   size_t* current_memory_usage() { return &current_memory_usage_; }
 
-  // Returns the min log containing the prep section after memtables listsed in
-  // `memtables_to_flush` are flushed and their status is persisted in manifest.
-  uint64_t PrecomputeMinLogContainingPrepSection(
-      const autovector<MemTable*>& memtables_to_flush);
-
-  uint64_t GetEarliestMemTableID() const {
-    auto& memlist = current_->memlist_;
-    if (memlist.empty()) {
-      return std::numeric_limits<uint64_t>::max();
-    }
-    return memlist.back()->GetID();
-  }
-
-  uint64_t GetLatestMemTableID() const {
-    auto& memlist = current_->memlist_;
-    if (memlist.empty()) {
-      return 0;
-    }
-    return memlist.front()->GetID();
-  }
+  uint64_t GetMinLogContainingPrepSection();
 
  private:
   // DB mutex held

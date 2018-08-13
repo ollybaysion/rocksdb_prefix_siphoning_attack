@@ -5,10 +5,13 @@
 #pragma once
 
 #include <assert.h>
+#include <condition_variable>
 #include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // This is only set from db_stress.cc and for testing only.
@@ -23,7 +26,7 @@ extern std::vector<std::string> rocksdb_kill_prefix_blacklist;
 #else
 
 namespace rocksdb {
-// Kill the process with probability 1/odds for testing.
+// Kill the process with probablity 1/odds for testing.
 extern void TestKillRandom(std::string kill_point, int odds,
                            const std::string& srcfile, int srcline);
 
@@ -45,7 +48,6 @@ extern void TestKillRandom(std::string kill_point, int odds,
 #define TEST_SYNC_POINT(x)
 #define TEST_IDX_SYNC_POINT(x, index)
 #define TEST_SYNC_POINT_CALLBACK(x, y)
-#define INIT_SYNC_POINT_SINGLETONS()
 #else
 
 namespace rocksdb {
@@ -63,10 +65,6 @@ class SyncPoint {
  public:
   static SyncPoint* GetInstance();
 
-  SyncPoint(const SyncPoint&) = delete;
-  SyncPoint& operator=(const SyncPoint&) = delete;
-  ~SyncPoint();
-
   struct SyncPointPair {
     std::string predecessor;
     std::string successor;
@@ -83,14 +81,12 @@ class SyncPoint {
   void LoadDependencyAndMarkers(const std::vector<SyncPointPair>& dependencies,
                                 const std::vector<SyncPointPair>& markers);
 
-  // The argument to the callback is passed through from
-  // TEST_SYNC_POINT_CALLBACK(); nullptr if TEST_SYNC_POINT or
-  // TEST_IDX_SYNC_POINT was used.
-  void SetCallBack(const std::string& point,
-                   const std::function<void(void*)>& callback);
+  // Set up a call back function in sync point.
+  void SetCallBack(const std::string point,
+                   std::function<void(void*)> callback);
 
   // Clear callback function by point
-  void ClearCallBack(const std::string& point);
+  void ClearCallBack(const std::string point);
 
   // Clear all call back functions.
   void ClearAllCallBacks();
@@ -106,20 +102,29 @@ class SyncPoint {
 
   // triggered by TEST_SYNC_POINT, blocking execution until all predecessors
   // are executed.
-  // And/or call registered callback function, with argument `cb_arg`
+  // And/or call registered callback functionn, with argument `cb_arg`
   void Process(const std::string& point, void* cb_arg = nullptr);
 
   // TODO: it might be useful to provide a function that blocks until all
   // sync points are cleared.
 
-  // We want this to be public so we can
-  // subclass the implementation
-  struct Data;
-
  private:
-   // Singleton
-  SyncPoint();
-  Data*  impl_;
+  bool PredecessorsAllCleared(const std::string& point);
+  bool DisabledByMarker(const std::string& point, std::thread::id thread_id);
+
+  // successor/predecessor map loaded from LoadDependency
+  std::unordered_map<std::string, std::vector<std::string>> successors_;
+  std::unordered_map<std::string, std::vector<std::string>> predecessors_;
+  std::unordered_map<std::string, std::function<void(void*)> > callbacks_;
+  std::unordered_map<std::string, std::vector<std::string> > markers_;
+  std::unordered_map<std::string, std::thread::id> marked_thread_id_;
+
+  std::mutex mutex_;
+  std::condition_variable cv_;
+  // sync points that have been passed through
+  std::unordered_set<std::string> cleared_points_;
+  bool enabled_ = false;
+  int num_callbacks_running_ = 0;
 };
 
 }  // namespace rocksdb
@@ -135,6 +140,4 @@ class SyncPoint {
   rocksdb::SyncPoint::GetInstance()->Process(x + std::to_string(index))
 #define TEST_SYNC_POINT_CALLBACK(x, y) \
   rocksdb::SyncPoint::GetInstance()->Process(x, y)
-#define INIT_SYNC_POINT_SINGLETONS() \
-  (void)rocksdb::SyncPoint::GetInstance();
 #endif  // NDEBUG

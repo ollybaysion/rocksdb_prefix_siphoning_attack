@@ -202,7 +202,6 @@ std::string HistogramStat::ToString() const {
            Percentile(99.99));
   r.append(buf);
   r.append("------------------------------------------------------\n");
-  if (cur_num == 0) return r;   // all buckets are empty
   const double mult = 100.0 / cur_num;
   uint64_t cumulative_sum = 0;
   for (unsigned int b = 0; b < num_buckets_; b++) {
@@ -235,8 +234,6 @@ void HistogramStat::Data(HistogramData * const data) const {
   data->max = static_cast<double>(max());
   data->average = Average();
   data->standard_deviation = StandardDeviation();
-  data->count = num();
-  data->sum = sum();
 }
 
 void HistogramImpl::Clear() {

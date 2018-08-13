@@ -54,7 +54,6 @@ public class Status {
     return builder.toString();
   }
 
-  // should stay in sync with /include/rocksdb/status.h:Code and /java/rocksjni/portal.h:toJavaStatusCode
   public enum Code {
     Ok(                 (byte)0x0),
     NotFound(           (byte)0x1),
@@ -69,8 +68,7 @@ public class Status {
     Aborted(            (byte)0xA),
     Busy(               (byte)0xB),
     Expired(            (byte)0xC),
-    TryAgain(           (byte)0xD),
-    Undefined(          (byte)0x7F);
+    TryAgain(           (byte)0xD);
 
     private final byte value;
 
@@ -85,30 +83,16 @@ public class Status {
         }
       }
       throw new IllegalArgumentException(
-          "Illegal value provided for Code (" + value + ").");
-    }
-
-    /**
-     * Returns the byte value of the enumerations value.
-     *
-     * @return byte representation
-     */
-    public byte getValue() {
-      return value;
+          "Illegal value provided for Code.");
     }
   }
 
-  // should stay in sync with /include/rocksdb/status.h:SubCode and /java/rocksjni/portal.h:toJavaStatusSubCode
   public enum SubCode {
     None(         (byte)0x0),
     MutexTimeout( (byte)0x1),
     LockTimeout(  (byte)0x2),
     LockLimit(    (byte)0x3),
-    NoSpace(      (byte)0x4),
-    Deadlock(     (byte)0x5),
-    StaleFile(    (byte)0x6),
-    MemoryLimit(  (byte)0x7),
-    Undefined(    (byte)0x7F);
+    MaxSubCode(   (byte)0x7E);
 
     private final byte value;
 
@@ -123,16 +107,7 @@ public class Status {
         }
       }
       throw new IllegalArgumentException(
-          "Illegal value provided for SubCode (" + value + ").");
-    }
-
-    /**
-     * Returns the byte value of the enumerations value.
-     *
-     * @return byte representation
-     */
-    public byte getValue() {
-      return value;
+          "Illegal value provided for SubCode.");
     }
   }
 }

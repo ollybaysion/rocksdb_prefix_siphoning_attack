@@ -55,13 +55,10 @@ public class WBWIRocksIterator
    * that created the record in the Write Batch
    */
   public enum WriteType {
-    PUT((byte)0x0),
-    MERGE((byte)0x1),
-    DELETE((byte)0x2),
-    SINGLE_DELETE((byte)0x3),
-    DELETE_RANGE((byte)0x4),
-    LOG((byte)0x5),
-    XID((byte)0x6);
+    PUT((byte)0x1),
+    MERGE((byte)0x2),
+    DELETE((byte)0x4),
+    LOG((byte)0x8);
 
     final byte id;
     WriteType(final byte id) {

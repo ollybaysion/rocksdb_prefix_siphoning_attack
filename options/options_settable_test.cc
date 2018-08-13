@@ -13,15 +13,15 @@
 
 #include <cstring>
 
-#include "options/options_helper.h"
+#include "options/options_parser.h"
 #include "rocksdb/convenience.h"
 #include "util/testharness.h"
 
 #ifndef GFLAGS
 bool FLAGS_enable_print = false;
 #else
-#include "util/gflags_compat.h"
-using GFLAGS_NAMESPACE::ParseCommandLineFlags;
+#include <gflags/gflags.h>
+using GFLAGS::ParseCommandLineFlags;
 DEFINE_bool(enable_print, false, "Print options generated to console.");
 #endif  // GFLAGS
 
@@ -140,9 +140,7 @@ TEST_F(OptionsSettableTest, BlockBasedTableOptionsAllFieldsSettable) {
       "cache_index_and_filter_blocks=1;"
       "cache_index_and_filter_blocks_with_high_priority=true;"
       "pin_l0_filter_and_index_blocks_in_cache=1;"
-      "pin_top_level_index_and_filter=1;"
       "index_type=kHashSearch;"
-      "data_block_index_type=kDataBlockHashSearch;"
       "checksum=kxxHash;hash_index_allow_collision=1;no_block_cache=1;"
       "block_cache=1M;block_cache_compressed=1k;block_size=1024;"
       "block_size_deviation=8;block_restart_interval=4; "
@@ -152,9 +150,7 @@ TEST_F(OptionsSettableTest, BlockBasedTableOptionsAllFieldsSettable) {
       "filter_policy=bloomfilter:4:true;whole_key_filtering=1;"
       "format_version=1;"
       "hash_index_allow_collision=false;"
-      "verify_compression=true;read_amp_bytes_per_bit=0;"
-      "enable_index_compression=false;"
-      "block_align=true",
+      "verify_compression=true;read_amp_bytes_per_bit=0",
       new_bbto));
 
   ASSERT_EQ(unset_bytes_base,
@@ -286,9 +282,7 @@ TEST_F(OptionsSettableTest, DBOptionsAllFieldsSettable) {
                              "avoid_flush_during_recovery=false;"
                              "avoid_flush_during_shutdown=false;"
                              "allow_ingest_behind=false;"
-                             "preserve_deletes=false;"
                              "concurrent_prepare=false;"
-                             "two_write_queues=false;"
                              "manual_wal_flush=false;"
                              "seq_per_batch=false;",
                              new_options));
@@ -301,12 +295,6 @@ TEST_F(OptionsSettableTest, DBOptionsAllFieldsSettable) {
 
   delete[] options_ptr;
   delete[] new_options_ptr;
-}
-
-template <typename T1, typename T2>
-inline int offset_of(T1 T2::*member) {
-  static T2 obj;
-  return int(size_t(&(obj.*member)) - size_t(&obj));
 }
 
 // If the test fails, likely a new option is added to ColumnFamilyOptions
@@ -347,8 +335,6 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
        sizeof(std::shared_ptr<const SliceTransform>)},
       {offset_of(&ColumnFamilyOptions::table_factory),
        sizeof(std::shared_ptr<TableFactory>)},
-      {offset_of(&ColumnFamilyOptions::cf_paths),
-       sizeof(std::vector<DbPath>)},
   };
 
   char* options_ptr = new char[sizeof(ColumnFamilyOptions)];
@@ -382,7 +368,6 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
   options->rate_limit_delay_max_milliseconds = 33;
   options->compaction_options_universal = CompactionOptionsUniversal();
   options->compression_opts = CompressionOptions();
-  options->bottommost_compression_opts = CompressionOptions();
   options->hard_rate_limit = 0;
   options->soft_rate_limit = 0;
   options->purge_redundant_kvs_while_flush = false;
@@ -442,9 +427,7 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       "hard_pending_compaction_bytes_limit=0;"
       "disable_auto_compactions=false;"
       "report_bg_io_stats=true;"
-      "ttl=60;"
-      "compaction_options_fifo={max_table_files_size=3;ttl=100;allow_"
-      "compaction=false;};",
+      "compaction_options_fifo={max_table_files_size=3;ttl=100;allow_compaction=false;};",
       new_options));
 
   ASSERT_EQ(unset_bytes_base,

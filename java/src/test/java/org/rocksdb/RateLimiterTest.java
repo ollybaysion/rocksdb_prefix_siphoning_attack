@@ -8,7 +8,6 @@ import org.junit.ClassRule;
 import org.junit.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.rocksdb.RateLimiter.*;
 
 public class RateLimiterTest {
 
@@ -17,21 +16,17 @@ public class RateLimiterTest {
       new RocksMemoryResource();
 
   @Test
-  public void bytesPerSecond() {
+  public void setBytesPerSecond() {
     try(final RateLimiter rateLimiter =
-            new RateLimiter(1000, DEFAULT_REFILL_PERIOD_MICROS,
-                DEFAULT_FAIRNESS, DEFAULT_MODE, DEFAULT_AUTOTUNE)) {
-      assertThat(rateLimiter.getBytesPerSecond()).isGreaterThan(0);
+            new RateLimiter(1000, 100 * 1000, 1)) {
       rateLimiter.setBytesPerSecond(2000);
-      assertThat(rateLimiter.getBytesPerSecond()).isGreaterThan(0);
     }
   }
 
   @Test
   public void getSingleBurstBytes() {
     try(final RateLimiter rateLimiter =
-            new RateLimiter(1000, DEFAULT_REFILL_PERIOD_MICROS,
-                DEFAULT_FAIRNESS, DEFAULT_MODE, DEFAULT_AUTOTUNE)) {
+            new RateLimiter(1000, 100 * 1000, 1)) {
       assertThat(rateLimiter.getSingleBurstBytes()).isEqualTo(100);
     }
   }
@@ -39,8 +34,7 @@ public class RateLimiterTest {
   @Test
   public void getTotalBytesThrough() {
     try(final RateLimiter rateLimiter =
-            new RateLimiter(1000, DEFAULT_REFILL_PERIOD_MICROS,
-                DEFAULT_FAIRNESS, DEFAULT_MODE, DEFAULT_AUTOTUNE)) {
+            new RateLimiter(1000, 100 * 1000, 1)) {
       assertThat(rateLimiter.getTotalBytesThrough()).isEqualTo(0);
     }
   }
@@ -48,18 +42,8 @@ public class RateLimiterTest {
   @Test
   public void getTotalRequests() {
     try(final RateLimiter rateLimiter =
-            new RateLimiter(1000, DEFAULT_REFILL_PERIOD_MICROS,
-                DEFAULT_FAIRNESS, DEFAULT_MODE, DEFAULT_AUTOTUNE)) {
+            new RateLimiter(1000, 100 * 1000, 1)) {
       assertThat(rateLimiter.getTotalRequests()).isEqualTo(0);
-    }
-  }
-
-  @Test
-  public void autoTune() {
-    try(final RateLimiter rateLimiter =
-            new RateLimiter(1000, DEFAULT_REFILL_PERIOD_MICROS,
-                DEFAULT_FAIRNESS, DEFAULT_MODE, true)) {
-      assertThat(rateLimiter.getBytesPerSecond()).isGreaterThan(0);
     }
   }
 }

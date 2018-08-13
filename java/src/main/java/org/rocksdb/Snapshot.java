@@ -11,10 +11,6 @@ package org.rocksdb;
 public class Snapshot extends RocksObject {
   Snapshot(final long nativeHandle) {
     super(nativeHandle);
-
-    // The pointer to the snapshot is always released
-    // by the database instance.
-    disOwnNativeHandle();
   }
 
   /**
@@ -24,17 +20,17 @@ public class Snapshot extends RocksObject {
    *     this snapshot.
    */
   public long getSequenceNumber() {
+    assert(isOwningHandle());
     return getSequenceNumber(nativeHandle_);
   }
 
+  /**
+   * Dont release C++ Snapshot pointer. The pointer
+   * to the snapshot is released by the database
+   * instance.
+   */
   @Override
   protected final void disposeInternal(final long handle) {
-    /**
-     * Nothing to release, we never own the pointer for a
-     * Snapshot. The pointer
-     * to the snapshot is released by the database
-     * instance.
-     */
   }
 
   private native long getSequenceNumber(long handle);

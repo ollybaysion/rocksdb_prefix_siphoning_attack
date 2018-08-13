@@ -56,10 +56,9 @@ int main() {
 }
 #else
 
-#ifndef __STDC_FORMAT_MACROS
-#define __STDC_FORMAT_MACROS
-#endif // __STDC_FORMAT_MACROS
+#include <gflags/gflags.h>
 
+#define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 #include <atomic>
 #include <random>
@@ -73,11 +72,10 @@ int main() {
 #include "rocksdb/options.h"
 #include "rocksdb/slice.h"
 #include "util/filename.h"
-#include "util/gflags_compat.h"
 
-using GFLAGS_NAMESPACE::ParseCommandLineFlags;
-using GFLAGS_NAMESPACE::RegisterFlagValidator;
-using GFLAGS_NAMESPACE::SetUsageMessage;
+using GFLAGS::ParseCommandLineFlags;
+using GFLAGS::RegisterFlagValidator;
+using GFLAGS::SetUsageMessage;
 
 DEFINE_int32(key_size, 10, "Key size");
 DEFINE_int32(value_size, 100, "Value size");

@@ -85,8 +85,7 @@ AdvancedColumnFamilyOptions::AdvancedColumnFamilyOptions(const Options& options)
       optimize_filters_for_hits(options.optimize_filters_for_hits),
       paranoid_file_checks(options.paranoid_file_checks),
       force_consistency_checks(options.force_consistency_checks),
-      report_bg_io_stats(options.report_bg_io_stats),
-      ttl(options.ttl) {
+      report_bg_io_stats(options.report_bg_io_stats) {
   assert(memtable_factory.get() != nullptr);
   if (max_bytes_for_level_multiplier_additional.size() <
       static_cast<unsigned int>(num_levels)) {
@@ -159,28 +158,6 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
                      min_write_buffer_number_to_merge);
     ROCKS_LOG_HEADER(log, "    Options.max_write_buffer_number_to_maintain: %d",
                      max_write_buffer_number_to_maintain);
-    ROCKS_LOG_HEADER(
-        log, "           Options.bottommost_compression_opts.window_bits: %d",
-        bottommost_compression_opts.window_bits);
-    ROCKS_LOG_HEADER(
-        log, "                 Options.bottommost_compression_opts.level: %d",
-        bottommost_compression_opts.level);
-    ROCKS_LOG_HEADER(
-        log, "              Options.bottommost_compression_opts.strategy: %d",
-        bottommost_compression_opts.strategy);
-    ROCKS_LOG_HEADER(
-        log,
-        "        Options.bottommost_compression_opts.max_dict_bytes: "
-        "%" ROCKSDB_PRIszt,
-        bottommost_compression_opts.max_dict_bytes);
-    ROCKS_LOG_HEADER(
-        log,
-        "        Options.bottommost_compression_opts.zstd_max_train_bytes: "
-        "%" ROCKSDB_PRIszt,
-        bottommost_compression_opts.zstd_max_train_bytes);
-    ROCKS_LOG_HEADER(
-        log, "                 Options.bottommost_compression_opts.enabled: %s",
-        bottommost_compression_opts.enabled ? "true" : "false");
     ROCKS_LOG_HEADER(log, "           Options.compression_opts.window_bits: %d",
                      compression_opts.window_bits);
     ROCKS_LOG_HEADER(log, "                 Options.compression_opts.level: %d",
@@ -191,13 +168,6 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
         log,
         "        Options.compression_opts.max_dict_bytes: %" ROCKSDB_PRIszt,
         compression_opts.max_dict_bytes);
-    ROCKS_LOG_HEADER(log,
-                     "        Options.compression_opts.zstd_max_train_bytes: "
-                     "%" ROCKSDB_PRIszt,
-                     compression_opts.zstd_max_train_bytes);
-    ROCKS_LOG_HEADER(log,
-                     "                 Options.compression_opts.enabled: %s",
-                     compression_opts.enabled ? "true" : "false");
     ROCKS_LOG_HEADER(log, "     Options.level0_file_num_compaction_trigger: %d",
                      level0_file_num_compaction_trigger);
     ROCKS_LOG_HEADER(log, "         Options.level0_slowdown_writes_trigger: %d",
@@ -347,7 +317,6 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
                      force_consistency_checks);
     ROCKS_LOG_HEADER(log, "               Options.report_bg_io_stats: %d",
                      report_bg_io_stats);
-    ROCKS_LOG_HEADER(log, "                              Options.ttl: %d", ttl);
 }  // ColumnFamilyOptions::Dump
 
 void Options::Dump(Logger* log) const {
@@ -479,8 +448,6 @@ ColumnFamilyOptions* ColumnFamilyOptions::OptimizeForPointLookup(
   prefix_extractor.reset(NewNoopTransform());
   BlockBasedTableOptions block_based_options;
   block_based_options.index_type = BlockBasedTableOptions::kHashSearch;
-  block_based_options.data_block_index_type =
-      BlockBasedTableOptions::kDataBlockBinarySearch;
   block_based_options.filter_policy.reset(NewBloomFilterPolicy(10));
   block_based_options.block_cache =
       NewLRUCache(static_cast<size_t>(block_cache_size_mb * 1024 * 1024));
@@ -536,7 +503,8 @@ ColumnFamilyOptions* ColumnFamilyOptions::OptimizeUniversalStyleCompaction(
 }
 
 DBOptions* DBOptions::IncreaseParallelism(int total_threads) {
-  max_background_jobs = total_threads;
+  max_background_compactions = total_threads - 1;
+  max_background_flushes = 1;
   env->SetBackgroundThreads(total_threads, Env::LOW);
   env->SetBackgroundThreads(1, Env::HIGH);
   return this;
@@ -546,7 +514,6 @@ DBOptions* DBOptions::IncreaseParallelism(int total_threads) {
 
 ReadOptions::ReadOptions()
     : snapshot(nullptr),
-      iterate_lower_bound(nullptr),
       iterate_upper_bound(nullptr),
       readahead_size(0),
       max_skippable_internal_keys(0),
@@ -559,12 +526,10 @@ ReadOptions::ReadOptions()
       prefix_same_as_start(false),
       pin_data(false),
       background_purge_on_iterator_cleanup(false),
-      ignore_range_deletions(false),
-      iter_start_seqnum(0) {}
+      ignore_range_deletions(false) {}
 
 ReadOptions::ReadOptions(bool cksum, bool cache)
     : snapshot(nullptr),
-      iterate_lower_bound(nullptr),
       iterate_upper_bound(nullptr),
       readahead_size(0),
       max_skippable_internal_keys(0),
@@ -577,7 +542,6 @@ ReadOptions::ReadOptions(bool cksum, bool cache)
       prefix_same_as_start(false),
       pin_data(false),
       background_purge_on_iterator_cleanup(false),
-      ignore_range_deletions(false),
-      iter_start_seqnum(0) {}
+      ignore_range_deletions(false) {}
 
 }  // namespace rocksdb

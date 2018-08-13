@@ -15,13 +15,11 @@ namespace rocksdb {
 class OptimisticTransactionDBImpl : public OptimisticTransactionDB {
  public:
   explicit OptimisticTransactionDBImpl(DB* db, bool take_ownership = true)
-      : OptimisticTransactionDB(db), db_owner_(take_ownership) {}
+      : OptimisticTransactionDB(db), db_(db), db_owner_(take_ownership) {}
 
   ~OptimisticTransactionDBImpl() {
-    // Prevent this stackable from destroying
-    // base db
     if (!db_owner_) {
-      db_ = nullptr;
+      db_.release();
     }
   }
 
@@ -29,9 +27,11 @@ class OptimisticTransactionDBImpl : public OptimisticTransactionDB {
                                 const OptimisticTransactionOptions& txn_options,
                                 Transaction* old_txn) override;
 
- private:
+  DB* GetBaseDB() override { return db_.get(); }
 
-   bool db_owner_;
+ private:
+  std::unique_ptr<DB> db_;
+  bool db_owner_;
 
   void ReinitializeTransaction(Transaction* txn,
                                const WriteOptions& write_options,

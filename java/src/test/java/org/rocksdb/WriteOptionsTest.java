@@ -8,8 +8,6 @@ package org.rocksdb;
 import org.junit.ClassRule;
 import org.junit.Test;
 
-import java.util.Random;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class WriteOptionsTest {
@@ -17,9 +15,6 @@ public class WriteOptionsTest {
   @ClassRule
   public static final RocksMemoryResource rocksMemoryResource =
       new RocksMemoryResource();
-
-  public static final Random rand = PlatformRandomHelper.
-          getPlatformSpecificRandomFactory();
 
   @Test
   public void writeOptions() {
@@ -47,18 +42,4 @@ public class WriteOptionsTest {
       assertThat(writeOptions.noSlowdown()).isFalse();
     }
   }
-
-  @Test
-  public void copyConstructor() {
-    WriteOptions origOpts = new WriteOptions();
-    origOpts.setDisableWAL(rand.nextBoolean());
-    origOpts.setIgnoreMissingColumnFamilies(rand.nextBoolean());
-    origOpts.setSync(rand.nextBoolean());
-    WriteOptions copyOpts = new WriteOptions(origOpts);
-    assertThat(origOpts.disableWAL()).isEqualTo(copyOpts.disableWAL());
-    assertThat(origOpts.ignoreMissingColumnFamilies()).isEqualTo(
-            copyOpts.ignoreMissingColumnFamilies());
-    assertThat(origOpts.sync()).isEqualTo(copyOpts.sync());
-  }
-
 }

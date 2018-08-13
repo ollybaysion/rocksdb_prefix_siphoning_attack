@@ -39,17 +39,12 @@ struct WindowsThread::Data {
 
 void WindowsThread::Init(std::function<void()>&& func) {
 
-  data_ = std::make_shared<Data>(std::move(func));
-  // We create another instance of shared_ptr to get an additional ref
-  // since we may detach and destroy this instance before the threadproc
-  // may start to run. We choose to allocate this additional ref on the heap
-  // so we do not need to synchronize and allow this thread to proceed
-  std::unique_ptr<std::shared_ptr<Data>> th_data(new std::shared_ptr<Data>(data_));
+  data_.reset(new Data(std::move(func)));
 
   data_->handle_ = _beginthreadex(NULL,
     0,    // stack size
     &Data::ThreadProc,
-    th_data.get(),
+    data_.get(),
     0,   // init flag
     &th_id_);
 
@@ -58,7 +53,6 @@ void WindowsThread::Init(std::function<void()>&& func) {
       std::errc::resource_unavailable_try_again),
       "Unable to create a thread");
   }
-  th_data.release();
 }
 
 WindowsThread::WindowsThread() :
@@ -135,12 +129,10 @@ void WindowsThread::join() {
     assert(false);
     throw std::system_error(static_cast<int>(lastError),
       std::system_category(),
-      "WaitForSingleObjectFailed: thread join");
+      "WaitForSingleObjectFailed");
   }
 
-  BOOL rc;
-  rc = CloseHandle(reinterpret_cast<HANDLE>(data_->handle_));
-  assert(rc != 0);
+  CloseHandle(reinterpret_cast<HANDLE>(data_->handle_));
   data_->handle_ = 0;
 }
 
@@ -156,7 +148,7 @@ bool WindowsThread::detach() {
   BOOL ret = CloseHandle(reinterpret_cast<HANDLE>(data_->handle_));
   data_->handle_ = 0;
 
-  return (ret != 0);
+  return (ret == TRUE);
 }
 
 void  WindowsThread::swap(WindowsThread& o) {
@@ -165,9 +157,9 @@ void  WindowsThread::swap(WindowsThread& o) {
 }
 
 unsigned int __stdcall  WindowsThread::Data::ThreadProc(void* arg) {
-  auto ptr = reinterpret_cast<std::shared_ptr<Data>*>(arg);
-  std::unique_ptr<std::shared_ptr<Data>> data(ptr);
-  (*data)->func_();
+  auto data = reinterpret_cast<WindowsThread::Data*>(arg);
+  data->func_();
+  _endthreadex(0);
   return 0;
 }
 } // namespace port

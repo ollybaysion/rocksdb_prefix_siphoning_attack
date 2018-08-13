@@ -30,5 +30,4 @@ namespace rocksdb {
 
 }  // namespace rocksdb
 
-// @lint-ignore TXT4 T25377293 Grandfathered in
 #endif  // JAVA_ROCKSJNI_STATISTICSJNI_H_

@@ -23,10 +23,6 @@ std::shared_ptr<ColumnBase> CreateTestColumn(int8_t mask,
                                              int8_t index,
                                              int64_t timestamp);
 
-std::tuple<int8_t, int8_t, int64_t> CreateTestColumnSpec(int8_t mask,
-                                                         int8_t index,
-                                                         int64_t timestamp);
-
 RowValue CreateTestRowValue(
     std::vector<std::tuple<int8_t, int8_t, int64_t>> column_specs);
 

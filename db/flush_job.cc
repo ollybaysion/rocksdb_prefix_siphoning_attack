@@ -54,36 +54,6 @@
 
 namespace rocksdb {
 
-const char* GetFlushReasonString (FlushReason flush_reason) {
-  switch (flush_reason) {
-    case FlushReason::kOthers:
-      return "Other Reasons";
-    case FlushReason::kGetLiveFiles:
-      return "Get Live Files";
-    case FlushReason::kShutDown:
-      return "Shut down";
-    case FlushReason::kExternalFileIngestion:
-      return "External File Ingestion";
-    case FlushReason::kManualCompaction:
-      return "Manual Compaction";
-    case FlushReason::kWriteBufferManager:
-      return "Write Buffer Manager";
-    case FlushReason::kWriteBufferFull:
-      return "Write Buffer Full";
-    case FlushReason::kTest:
-      return "Test";
-    case FlushReason::kDeleteFiles:
-      return "Delete Files";
-    case FlushReason::kAutoCompaction:
-      return "Auto Compaction";
-    case FlushReason::kManualFlush:
-      return "Manual Flush";
-    default:
-      return "Invalid";
-  }
-}
-
-
 FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
                    const ImmutableDBOptions& db_options,
                    const MutableCFOptions& mutable_cf_options,
@@ -116,8 +86,6 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
       stats_(stats),
       event_logger_(event_logger),
       measure_io_stats_(measure_io_stats),
-      edit_(nullptr),
-      base_(nullptr),
       pick_memtable_called(false) {
   // Update the thread status to indicate flush.
   ReportStartedFlush();
@@ -185,9 +153,7 @@ void FlushJob::PickMemTable() {
   base_->Ref();  // it is likely that we do not need this reference
 }
 
-Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
-                     FileMetaData* file_meta) {
-  TEST_SYNC_POINT("FlushJob::Start");
+Status FlushJob::Run(FileMetaData* file_meta) {
   db_mutex_->AssertHeld();
   assert(pick_memtable_called);
   AutoThreadOperationStageUpdater stage_run(
@@ -228,7 +194,7 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
     TEST_SYNC_POINT("FlushJob::InstallResults");
     // Replace immutable memtable with the generated Table
     s = cfd_->imm()->InstallMemtableFlushResults(
-        cfd_, mutable_cf_options_, mems_, prep_tracker, versions_, db_mutex_,
+        cfd_, mutable_cf_options_, mems_, versions_, db_mutex_,
         meta_.fd.GetNumber(), &job_context_->memtables_to_free, db_directory_,
         log_buffer_);
   }
@@ -241,8 +207,6 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
   auto stream = event_logger_->LogToBuffer(log_buffer_);
   stream << "job" << job_context_->job_id << "event"
          << "flush_finished";
-  stream << "output_compression"
-         << CompressionTypeToString(output_compression_);
   stream << "lsm_state";
   stream.StartArray();
   auto vstorage = cfd_->current()->storage_info();
@@ -280,7 +244,6 @@ Status FlushJob::WriteLevel0Table() {
   const uint64_t start_micros = db_options_.env->NowMicros();
   Status s;
   {
-    auto write_hint = cfd_->CalculateSSTWriteHint(0);
     db_mutex_->Unlock();
     if (log_buffer_) {
       log_buffer_->FlushBufferToLog();
@@ -310,13 +273,12 @@ Status FlushJob::WriteLevel0Table() {
       total_memory_usage += m->ApproximateMemoryUsage();
     }
 
-    event_logger_->Log()
-        << "job" << job_context_->job_id << "event"
-        << "flush_started"
-        << "num_memtables" << mems_.size() << "num_entries" << total_num_entries
-        << "num_deletes" << total_num_deletes << "memory_usage"
-        << total_memory_usage << "flush_reason"
-        << GetFlushReasonString(cfd_->GetFlushReason());
+    event_logger_->Log() << "job" << job_context_->job_id << "event"
+                         << "flush_started"
+                         << "num_memtables" << mems_.size() << "num_entries"
+                         << total_num_entries << "num_deletes"
+                         << total_num_deletes << "memory_usage"
+                         << total_memory_usage;
 
     {
       ScopedArenaIterator iter(
@@ -334,19 +296,8 @@ Status FlushJob::WriteLevel0Table() {
       TEST_SYNC_POINT_CALLBACK("FlushJob::WriteLevel0Table:output_compression",
                                &output_compression_);
       int64_t _current_time = 0;
-      auto status = db_options_.env->GetCurrentTime(&_current_time);
-      // Safe to proceed even if GetCurrentTime fails. So, log and proceed.
-      if (!status.ok()) {
-        ROCKS_LOG_WARN(
-            db_options_.info_log,
-            "Failed to get current time to populate creation_time property. "
-            "Status: %s",
-            status.ToString().c_str());
-      }
+      db_options_.env->GetCurrentTime(&_current_time);  // ignore error
       const uint64_t current_time = static_cast<uint64_t>(_current_time);
-
-      uint64_t oldest_key_time =
-          mems_.front()->ApproximateOldestKeyTime();
 
       s = BuildTable(
           dbname_, db_options_.env, *cfd_->ioptions(), mutable_cf_options_,
@@ -358,8 +309,7 @@ Status FlushJob::WriteLevel0Table() {
           output_compression_, cfd_->ioptions()->compression_opts,
           mutable_cf_options_.paranoid_file_checks, cfd_->internal_stats(),
           TableFileCreationReason::kFlush, event_logger_, job_context_->job_id,
-          Env::IO_HIGH, &table_properties_, 0 /* level */, current_time,
-          oldest_key_time, write_hint);
+          Env::IO_HIGH, &table_properties_, 0 /* level */, current_time);
       LogFlush(db_options_.info_log);
     }
     ROCKS_LOG_INFO(db_options_.info_log,
@@ -389,15 +339,14 @@ Status FlushJob::WriteLevel0Table() {
     // Add file to L0
     edit_->AddFile(0 /* level */, meta_.fd.GetNumber(), meta_.fd.GetPathId(),
                    meta_.fd.GetFileSize(), meta_.smallest, meta_.largest,
-                   meta_.fd.smallest_seqno, meta_.fd.largest_seqno,
+                   meta_.smallest_seqno, meta_.largest_seqno,
                    meta_.marked_for_compaction);
   }
 
   // Note that here we treat flush as level 0 compaction in internal stats
-  InternalStats::CompactionStats stats(CompactionReason::kFlush, 1);
+  InternalStats::CompactionStats stats(1);
   stats.micros = db_options_.env->NowMicros() - start_micros;
   stats.bytes_written = meta_.fd.GetFileSize();
-  MeasureTime(stats_, FLUSH_TIME, stats.micros);
   cfd_->internal_stats()->AddCompactionStats(0 /* level */, stats);
   cfd_->internal_stats()->AddCFStats(InternalStats::BYTES_FLUSHED,
                                      meta_.fd.GetFileSize());

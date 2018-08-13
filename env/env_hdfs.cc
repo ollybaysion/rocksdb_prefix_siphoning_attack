@@ -277,19 +277,6 @@ class HdfsLogger : public Logger {
   HdfsWritableFile* file_;
   uint64_t (*gettid_)();  // Return the thread id for the current thread
 
-  Status HdfsCloseHelper() {
-    ROCKS_LOG_DEBUG(mylog, "[hdfs] HdfsLogger closed %s\n",
-                    file_->getName().c_str());
-    Status s = file_->Close();
-    if (mylog != nullptr && mylog == this) {
-      mylog = nullptr;
-    }
-    return s;
-  }
-
- protected:
-  virtual Status CloseImpl() override { return HdfsCloseHelper(); }
-
  public:
   HdfsLogger(HdfsWritableFile* f, uint64_t (*gettid)())
       : file_(f), gettid_(gettid) {
@@ -298,9 +285,11 @@ class HdfsLogger : public Logger {
   }
 
   virtual ~HdfsLogger() {
-    if (!closed_) {
-      closed_ = true;
-      HdfsCloseHelper();
+    ROCKS_LOG_DEBUG(mylog, "[hdfs] HdfsLogger closed %s\n",
+                    file_->getName().c_str());
+    delete file_;
+    if (mylog != nullptr && mylog == this) {
+      mylog = nullptr;
     }
   }
 
@@ -609,13 +598,13 @@ Status NewHdfsEnv(Env** hdfs_env, const std::string& fsname) {
 
 // dummy placeholders used when HDFS is not available
 namespace rocksdb {
-Status HdfsEnv::NewSequentialFile(const std::string& /*fname*/,
-                                  unique_ptr<SequentialFile>* /*result*/,
-                                  const EnvOptions& /*options*/) {
-  return Status::NotSupported("Not compiled with hdfs support");
+ Status HdfsEnv::NewSequentialFile(const std::string& fname,
+                                   unique_ptr<SequentialFile>* result,
+                                   const EnvOptions& options) {
+   return Status::NotSupported("Not compiled with hdfs support");
  }
 
- Status NewHdfsEnv(Env** /*hdfs_env*/, const std::string& /*fsname*/) {
+ Status NewHdfsEnv(Env** hdfs_env, const std::string& fsname) {
    return Status::NotSupported("Not compiled with hdfs support");
  }
 }

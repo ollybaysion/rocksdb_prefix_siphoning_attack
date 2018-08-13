@@ -15,6 +15,7 @@ int main() {
 #define __STDC_FORMAT_MACROS
 #endif
 
+#include <gflags/gflags.h>
 #include <inttypes.h>
 #include <algorithm>
 #include <atomic>
@@ -26,13 +27,12 @@ int main() {
 #include "dynamic_bloom.h"
 #include "port/port.h"
 #include "util/arena.h"
-#include "util/gflags_compat.h"
 #include "util/logging.h"
-#include "util/stop_watch.h"
 #include "util/testharness.h"
 #include "util/testutil.h"
+#include "util/stop_watch.h"
 
-using GFLAGS_NAMESPACE::ParseCommandLineFlags;
+using GFLAGS::ParseCommandLineFlags;
 
 DEFINE_int32(bits_per_key, 10, "");
 DEFINE_int32(num_probes, 6, "");

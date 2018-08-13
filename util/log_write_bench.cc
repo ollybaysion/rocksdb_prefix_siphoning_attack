@@ -11,15 +11,16 @@ int main() {
 }
 #else
 
+#include <gflags/gflags.h>
+
 #include "monitoring/histogram.h"
 #include "rocksdb/env.h"
 #include "util/file_reader_writer.h"
-#include "util/gflags_compat.h"
 #include "util/testharness.h"
 #include "util/testutil.h"
 
-using GFLAGS_NAMESPACE::ParseCommandLineFlags;
-using GFLAGS_NAMESPACE::SetUsageMessage;
+using GFLAGS::ParseCommandLineFlags;
+using GFLAGS::SetUsageMessage;
 
 // A simple benchmark to simulate transactional logs
 
@@ -31,7 +32,7 @@ DEFINE_bool(enable_sync, false, "sync after each write.");
 
 namespace rocksdb {
 void RunBenchmark() {
-  std::string file_name = test::PerThreadDBPath("log_write_benchmark.log");
+  std::string file_name = test::TmpDir() + "/log_write_benchmark.log";
   Env* env = Env::Default();
   EnvOptions env_options = env->OptimizeForLogWrite(EnvOptions());
   env_options.bytes_per_sync = FLAGS_bytes_per_sync;

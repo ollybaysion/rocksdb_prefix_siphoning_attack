@@ -10,21 +10,18 @@
 #include "rocksdb/comparator.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/status.h"
-#include "table/format.h"
 
 namespace rocksdb {
 
 class PinnedIteratorsManager;
 
-template <class TValue>
-class InternalIteratorBase : public Cleanable {
+class InternalIterator : public Cleanable {
  public:
-  InternalIteratorBase() {}
-  virtual ~InternalIteratorBase() {}
+  InternalIterator() {}
+  virtual ~InternalIterator() {}
 
   // An iterator is either positioned at a key/value pair, or
   // not valid.  This method returns true iff the iterator is valid.
-  // Always returns false if !status().ok().
   virtual bool Valid() const = 0;
 
   // huanchen
@@ -59,9 +56,6 @@ class InternalIteratorBase : public Cleanable {
   // Position at the first key in the source that at or past target
   // The iterator is Valid() after this call iff the source contains
   // an entry that comes at or past target.
-  // All Seek*() methods clear any error status() that the iterator had prior to
-  // the call; after the seek, status() indicates only the error (if any) that
-  // happened during the seek, not any past errors.
   virtual void Seek(const Slice& target) = 0;
 
   // Position at the first key in the source that at or before target
@@ -92,25 +86,20 @@ class InternalIteratorBase : public Cleanable {
   // Return the value for the current entry.  The underlying storage for
   // the returned slice is valid only until the next modification of
   // the iterator.
-  // REQUIRES: Valid()
-  virtual TValue value() const = 0;
+  // REQUIRES: !AtEnd() && !AtStart()
+  virtual Slice value() const = 0;
 
   // If an error has occurred, return it.  Else return an ok status.
   // If non-blocking IO is requested and this operation cannot be
   // satisfied without doing some IO, then this returns Status::Incomplete().
   virtual Status status() const = 0;
 
-  // True if the iterator is invalidated because it is out of the iterator
-  // upper bound
-  virtual bool IsOutOfBound() { return false; }
-
   // Pass the PinnedIteratorsManager to the Iterator, most Iterators dont
   // communicate with PinnedIteratorsManager so default implementation is no-op
   // but for Iterators that need to communicate with PinnedIteratorsManager
   // they will implement this function and use the passed pointer to communicate
   // with PinnedIteratorsManager.
-  virtual void SetPinnedItersMgr(PinnedIteratorsManager* /*pinned_iters_mgr*/) {
-  }
+  virtual void SetPinnedItersMgr(PinnedIteratorsManager* pinned_iters_mgr) {}
 
   // If true, this means that the Slice returned by key() is valid as long as
   // PinnedIteratorsManager::ReleasePinnedData is not called and the
@@ -127,7 +116,7 @@ class InternalIteratorBase : public Cleanable {
   // Iterator is not deleted.
   virtual bool IsValuePinned() const { return false; }
 
-  virtual Status GetProperty(std::string /*prop_name*/, std::string* /*prop*/) {
+  virtual Status GetProperty(std::string prop_name, std::string* prop) {
     return Status::NotSupported("");
   }
 
@@ -144,24 +133,14 @@ class InternalIteratorBase : public Cleanable {
 
  private:
   // No copying allowed
-  InternalIteratorBase(const InternalIteratorBase&) = delete;
-  InternalIteratorBase& operator=(const InternalIteratorBase&) = delete;
+  InternalIterator(const InternalIterator&) = delete;
+  InternalIterator& operator=(const InternalIterator&) = delete;
 };
 
-using InternalIterator = InternalIteratorBase<Slice>;
-
 // Return an empty iterator (yields nothing).
-template <class TValue = Slice>
-extern InternalIteratorBase<TValue>* NewEmptyInternalIterator();
+extern InternalIterator* NewEmptyInternalIterator();
 
 // Return an empty iterator with the specified status.
-template <class TValue = Slice>
-extern InternalIteratorBase<TValue>* NewErrorInternalIterator(
-    const Status& status);
-
-// Return an empty iterator with the specified status, allocated arena.
-template <class TValue = Slice>
-extern InternalIteratorBase<TValue>* NewErrorInternalIterator(
-    const Status& status, Arena* arena);
+extern InternalIterator* NewErrorInternalIterator(const Status& status);
 
 }  // namespace rocksdb

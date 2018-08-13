@@ -43,15 +43,11 @@ if test -z $PIC_BUILD; then
   LZ4_INCLUDE=" -I $LZ4_BASE/include/"
   LZ4_LIBS=" $LZ4_BASE/lib/liblz4.a"
   CFLAGS+=" -DLZ4"
-fi
 
-ZSTD_INCLUDE=" -I $ZSTD_BASE/include/"
-if test -z $PIC_BUILD; then
+  ZSTD_INCLUDE=" -I $ZSTD_BASE/include/"
   ZSTD_LIBS=" $ZSTD_BASE/lib/libzstd.a"
-else
-  ZSTD_LIBS=" $ZSTD_BASE/lib/libzstd_pic.a"
+  CFLAGS+=" -DZSTD"
 fi
-CFLAGS+=" -DZSTD"
 
 # location of gflags headers and libraries
 GFLAGS_INCLUDE=" -I $GFLAGS_BASE/include/"
@@ -87,7 +83,6 @@ CFLAGS+=" -DTBB"
 
 # use Intel SSE support for checksum calculations
 export USE_SSE=1
-export PORTABLE=1
 
 BINUTILS="$BINUTILS_BASE/bin"
 AR="$BINUTILS/ar"

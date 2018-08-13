@@ -30,5 +30,4 @@ namespace rocksdb {
 
     return true;
   }
-// @lint-ignore TXT4 T25377293 Grandfathered in
 };

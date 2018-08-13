@@ -22,9 +22,11 @@
 
 namespace rocksdb {
 
-Status TransactionUtil::CheckKeyForConflicts(
-    DBImpl* db_impl, ColumnFamilyHandle* column_family, const std::string& key,
-    SequenceNumber snap_seq, bool cache_only, ReadCallback* snap_checker) {
+Status TransactionUtil::CheckKeyForConflicts(DBImpl* db_impl,
+                                             ColumnFamilyHandle* column_family,
+                                             const std::string& key,
+                                             SequenceNumber key_seq,
+                                             bool cache_only) {
   Status result;
 
   auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
@@ -40,8 +42,7 @@ Status TransactionUtil::CheckKeyForConflicts(
     SequenceNumber earliest_seq =
         db_impl->GetEarliestMemTableSequenceNumber(sv, true);
 
-    result = CheckKey(db_impl, sv, earliest_seq, snap_seq, key, cache_only,
-                      snap_checker);
+    result = CheckKey(db_impl, sv, earliest_seq, key_seq, key, cache_only);
 
     db_impl->ReturnAndCleanupSuperVersion(cfd, sv);
   }
@@ -51,9 +52,8 @@ Status TransactionUtil::CheckKeyForConflicts(
 
 Status TransactionUtil::CheckKey(DBImpl* db_impl, SuperVersion* sv,
                                  SequenceNumber earliest_seq,
-                                 SequenceNumber snap_seq,
-                                 const std::string& key, bool cache_only,
-                                 ReadCallback* snap_checker) {
+                                 SequenceNumber key_seq, const std::string& key,
+                                 bool cache_only) {
   Status result;
   bool need_to_read_sst = false;
 
@@ -73,9 +73,9 @@ Status TransactionUtil::CheckKey(DBImpl* db_impl, SuperVersion* sv,
       result = Status::TryAgain(
           "Transaction ould not check for conflicts as the MemTable does not "
           "countain a long enough history to check write at SequenceNumber: ",
-          ToString(snap_seq));
+          ToString(key_seq));
     }
-  } else if (snap_seq < earliest_seq) {
+  } else if (key_seq < earliest_seq) {
     need_to_read_sst = true;
 
     if (cache_only) {
@@ -91,7 +91,7 @@ Status TransactionUtil::CheckKey(DBImpl* db_impl, SuperVersion* sv,
                "max_write_buffer_number_to_maintain option could reduce the "
                "frequency "
                "of this error.",
-               snap_seq, earliest_seq);
+               key_seq, earliest_seq);
       result = Status::TryAgain(msg);
     }
   }
@@ -105,13 +105,9 @@ Status TransactionUtil::CheckKey(DBImpl* db_impl, SuperVersion* sv,
 
     if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
       result = s;
-    } else if (found_record_for_key) {
-      bool write_conflict = snap_checker == nullptr
-                                ? snap_seq < seq
-                                : !snap_checker->IsVisible(seq);
-      if (write_conflict) {
-        result = Status::Busy();
-      }
+    } else if (found_record_for_key && (seq > key_seq)) {
+      // Write Conflict
+      result = Status::Busy();
     }
   }
 

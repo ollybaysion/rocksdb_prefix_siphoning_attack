@@ -19,21 +19,19 @@ namespace rocksdb {
 // the valid() and key() results for an underlying iterator.
 // This can help avoid virtual function calls and also gives better
 // cache locality.
-template <class TValue = Slice>
-class IteratorWrapperBase {
+class IteratorWrapper {
  public:
-  IteratorWrapperBase() : iter_(nullptr), valid_(false) {}
-  explicit IteratorWrapperBase(InternalIteratorBase<TValue>* _iter)
-      : iter_(nullptr) {
+  IteratorWrapper() : iter_(nullptr), valid_(false) {}
+  explicit IteratorWrapper(InternalIterator* _iter) : iter_(nullptr) {
     Set(_iter);
   }
-  ~IteratorWrapperBase() {}
-  InternalIteratorBase<TValue>* iter() const { return iter_; }
+  ~IteratorWrapper() {}
+  InternalIterator* iter() const { return iter_; }
 
   // Set the underlying Iterator to _iter and return
   // previous underlying Iterator.
-  InternalIteratorBase<TValue>* Set(InternalIteratorBase<TValue>* _iter) {
-    InternalIteratorBase<TValue>* old_iter = iter_;
+  InternalIterator* Set(InternalIterator* _iter) {
+    InternalIterator* old_iter = iter_;
 
     iter_ = _iter;
     if (iter_ == nullptr) {
@@ -49,7 +47,7 @@ class IteratorWrapperBase {
       if (!is_arena_mode) {
         delete iter_;
       } else {
-        iter_->~InternalIteratorBase<TValue>();
+        iter_->~InternalIterator();
       }
     }
   }
@@ -57,10 +55,7 @@ class IteratorWrapperBase {
   // Iterator interface methods
   bool Valid() const        { return valid_; }
   Slice key() const         { assert(Valid()); return key_; }
-  TValue value() const {
-    assert(Valid());
-    return iter_->value();
-  }
+  Slice value() const       { assert(Valid()); return iter_->value(); }
   // Methods below require iter() != nullptr
   Status status() const     { assert(iter_); return iter_->status(); }
   void Next()               { assert(iter_); iter_->Next();        Update(); }
@@ -105,20 +100,20 @@ class IteratorWrapperBase {
     valid_ = iter_->Valid();
     if (valid_) {
       key_ = iter_->key();
-      assert(iter_->status().ok());
     }
   }
 
-  InternalIteratorBase<TValue>* iter_;
+  InternalIterator* iter_;
   bool valid_;
   Slice key_;
 };
 
-using IteratorWrapper = IteratorWrapperBase<Slice>;
-
 class Arena;
 // Return an empty iterator (yields nothing) allocated from arena.
-template <class TValue = Slice>
-extern InternalIteratorBase<TValue>* NewEmptyInternalIterator(Arena* arena);
+extern InternalIterator* NewEmptyInternalIterator(Arena* arena);
+
+// Return an empty iterator with the specified status, allocated arena.
+extern InternalIterator* NewErrorInternalIterator(const Status& status,
+                                                  Arena* arena);
 
 }  // namespace rocksdb

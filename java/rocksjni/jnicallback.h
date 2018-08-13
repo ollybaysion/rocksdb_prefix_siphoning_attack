@@ -25,5 +25,4 @@ namespace rocksdb {
   };
 }
 
-// @lint-ignore TXT4 T25377293 Grandfathered in
 #endif  // JAVA_ROCKSJNI_JNICALLBACK_H_

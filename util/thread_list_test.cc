@@ -47,7 +47,7 @@ class SimulatedBackgroundTask {
     }
     Env::Default()->GetThreadStatusUpdater()->ClearThreadState();
     Env::Default()->GetThreadStatusUpdater()->ClearThreadOperation();
-    Env::Default()->GetThreadStatusUpdater()->SetColumnFamilyInfoKey(nullptr);
+    Env::Default()->GetThreadStatusUpdater()->SetColumnFamilyInfoKey(0);
     running_count_--;
     bg_cv_.notify_all();
   }

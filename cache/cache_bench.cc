@@ -17,16 +17,16 @@ int main() {
 #include <inttypes.h>
 #include <sys/types.h>
 #include <stdio.h>
+#include <gflags/gflags.h>
 
-#include "port/port.h"
-#include "rocksdb/cache.h"
 #include "rocksdb/db.h"
+#include "rocksdb/cache.h"
 #include "rocksdb/env.h"
-#include "util/gflags_compat.h"
+#include "port/port.h"
 #include "util/mutexlock.h"
 #include "util/random.h"
 
-using GFLAGS_NAMESPACE::ParseCommandLineFlags;
+using GFLAGS::ParseCommandLineFlags;
 
 static const uint32_t KB = 1024;
 
@@ -52,7 +52,7 @@ namespace rocksdb {
 
 class CacheBench;
 namespace {
-void deleter(const Slice& /*key*/, void* value) {
+void deleter(const Slice& key, void* value) {
     delete reinterpret_cast<char *>(value);
 }
 

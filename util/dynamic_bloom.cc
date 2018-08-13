@@ -44,8 +44,7 @@ DynamicBloom::DynamicBloom(uint32_t num_probes,
     : kTotalBits(0),
       kNumBlocks(0),
       kNumProbes(num_probes),
-      hash_func_(hash_func == nullptr ? &BloomHash : hash_func),
-      data_(nullptr) {}
+      hash_func_(hash_func == nullptr ? &BloomHash : hash_func) {}
 
 void DynamicBloom::SetRawData(unsigned char* raw_data, uint32_t total_bits,
                               uint32_t num_blocks) {

@@ -35,11 +35,11 @@
 namespace rocksdb {
 
 bool NewestFirstBySeqNo(FileMetaData* a, FileMetaData* b) {
-  if (a->fd.largest_seqno != b->fd.largest_seqno) {
-    return a->fd.largest_seqno > b->fd.largest_seqno;
+  if (a->largest_seqno != b->largest_seqno) {
+    return a->largest_seqno > b->largest_seqno;
   }
-  if (a->fd.smallest_seqno != b->fd.smallest_seqno) {
-    return a->fd.smallest_seqno > b->fd.smallest_seqno;
+  if (a->smallest_seqno != b->smallest_seqno) {
+    return a->smallest_seqno > b->smallest_seqno;
   }
   // Break ties by file number
   return a->fd.GetNumber() > b->fd.GetNumber();
@@ -65,8 +65,6 @@ class VersionBuilder::Rep {
   struct FileComparator {
     enum SortMethod { kLevel0 = 0, kLevelNon0 = 1, } sort_method;
     const InternalKeyComparator* internal_comparator;
-
-    FileComparator() : internal_comparator(nullptr) {}
 
     bool operator()(FileMetaData* f1, FileMetaData* f2) const {
       switch (sort_method) {
@@ -162,24 +160,22 @@ class VersionBuilder::Rep {
             abort();
           }
 
-          if (f2->fd.smallest_seqno == f2->fd.largest_seqno) {
+          if (f2->smallest_seqno == f2->largest_seqno) {
             // This is an external file that we ingested
-            SequenceNumber external_file_seqno = f2->fd.smallest_seqno;
-            if (!(external_file_seqno < f1->fd.largest_seqno ||
+            SequenceNumber external_file_seqno = f2->smallest_seqno;
+            if (!(external_file_seqno < f1->largest_seqno ||
                   external_file_seqno == 0)) {
-              fprintf(stderr,
-                      "L0 file with seqno %" PRIu64 " %" PRIu64
-                      " vs. file with global_seqno %" PRIu64 "\n",
-                      f1->fd.smallest_seqno, f1->fd.largest_seqno,
+              fprintf(stderr, "L0 file with seqno %" PRIu64 " %" PRIu64
+                              " vs. file with global_seqno %" PRIu64 "\n",
+                      f1->smallest_seqno, f1->largest_seqno,
                       external_file_seqno);
               abort();
             }
-          } else if (f1->fd.smallest_seqno <= f2->fd.smallest_seqno) {
-            fprintf(stderr,
-                    "L0 files seqno %" PRIu64 " %" PRIu64 " vs. %" PRIu64
-                    " %" PRIu64 "\n",
-                    f1->fd.smallest_seqno, f1->fd.largest_seqno,
-                    f2->fd.smallest_seqno, f2->fd.largest_seqno);
+          } else if (f1->smallest_seqno <= f2->smallest_seqno) {
+            fprintf(stderr, "L0 files seqno %" PRIu64 " %" PRIu64
+                            " vs. %" PRIu64 " %" PRIu64 "\n",
+                    f1->smallest_seqno, f1->largest_seqno, f2->smallest_seqno,
+                    f2->largest_seqno);
             abort();
           }
         } else {
@@ -201,7 +197,7 @@ class VersionBuilder::Rep {
     }
   }
 
-  void CheckConsistencyForDeletes(VersionEdit* /*edit*/, uint64_t number,
+  void CheckConsistencyForDeletes(VersionEdit* edit, uint64_t number,
                                   int level) {
 #ifdef NDEBUG
     if (!base_vstorage_->force_consistency_checks()) {
@@ -370,8 +366,7 @@ class VersionBuilder::Rep {
   }
 
   void LoadTableHandlers(InternalStats* internal_stats, int max_threads,
-                         bool prefetch_index_and_filter_in_cache,
-                         const SliceTransform* prefix_extractor) {
+                         bool prefetch_index_and_filter_in_cache) {
     assert(table_cache_ != nullptr);
     // <file metadata, level>
     std::vector<std::pair<FileMetaData*, int>> files_meta;
@@ -393,12 +388,12 @@ class VersionBuilder::Rep {
 
         auto* file_meta = files_meta[file_idx].first;
         int level = files_meta[file_idx].second;
-        table_cache_->FindTable(
-            env_options_, *(base_vstorage_->InternalComparator()),
-            file_meta->fd, &file_meta->table_reader_handle, prefix_extractor,
-            false /*no_io */, true /* record_read_stats */,
-            internal_stats->GetFileReadHist(level), false, level,
-            prefetch_index_and_filter_in_cache);
+        table_cache_->FindTable(env_options_,
+                                *(base_vstorage_->InternalComparator()),
+                                file_meta->fd, &file_meta->table_reader_handle,
+                                false /*no_io */, true /* record_read_stats */,
+                                internal_stats->GetFileReadHist(level), false,
+                                level, prefetch_index_and_filter_in_cache);
         if (file_meta->table_reader_handle != nullptr) {
           // Load table_reader
           file_meta->fd.table_reader = table_cache_->GetTableReaderFromHandle(
@@ -407,19 +402,23 @@ class VersionBuilder::Rep {
       }
     };
 
-    std::vector<port::Thread> threads;
-    for (int i = 1; i < max_threads; i++) {
-      threads.emplace_back(load_handlers_func);
-    }
-    load_handlers_func();
-    for (auto& t : threads) {
-      t.join();
+    if (max_threads <= 1) {
+      load_handlers_func();
+    } else {
+      std::vector<port::Thread> threads;
+      for (int i = 0; i < max_threads; i++) {
+        threads.emplace_back(load_handlers_func);
+      }
+
+      for (auto& t : threads) {
+        t.join();
+      }
     }
   }
 
   void MaybeAddFile(VersionStorageInfo* vstorage, int level, FileMetaData* f) {
     if (levels_[level].deleted_files.count(f->fd.GetNumber()) > 0) {
-      // f is to-be-deleted table file
+      // f is to-be-delected table file
       vstorage->RemoveCurrentStats(f);
     } else {
       vstorage->AddFile(level, f, info_log_);
@@ -454,12 +453,11 @@ void VersionBuilder::SaveTo(VersionStorageInfo* vstorage) {
   rep_->SaveTo(vstorage);
 }
 
-void VersionBuilder::LoadTableHandlers(InternalStats* internal_stats,
-                                       int max_threads,
-                                       bool prefetch_index_and_filter_in_cache,
-                                       const SliceTransform* prefix_extractor) {
+void VersionBuilder::LoadTableHandlers(
+    InternalStats* internal_stats, int max_threads,
+    bool prefetch_index_and_filter_in_cache) {
   rep_->LoadTableHandlers(internal_stats, max_threads,
-                          prefetch_index_and_filter_in_cache, prefix_extractor);
+                          prefetch_index_and_filter_in_cache);
 }
 
 void VersionBuilder::MaybeAddFile(VersionStorageInfo* vstorage, int level,

@@ -66,9 +66,11 @@ class MergeOperator {
   // internal corruption. This will be treated as an error by the library.
   //
   // Also make use of the *logger for error messages.
-  virtual bool FullMerge(const Slice& /*key*/, const Slice* /*existing_value*/,
-                         const std::deque<std::string>& /*operand_list*/,
-                         std::string* /*new_value*/, Logger* /*logger*/) const {
+  virtual bool FullMerge(const Slice& key,
+                         const Slice* existing_value,
+                         const std::deque<std::string>& operand_list,
+                         std::string* new_value,
+                         Logger* logger) const {
     // deprecated, please use FullMergeV2()
     assert(false);
     return false;
@@ -87,7 +89,7 @@ class MergeOperator {
     // The key associated with the merge operation.
     const Slice& key;
     // The existing value of the current key, nullptr means that the
-    // value doesn't exist.
+    // value dont exist.
     const Slice* existing_value;
     // A list of operands to apply.
     const std::vector<Slice>& operand_list;
@@ -143,10 +145,9 @@ class MergeOperator {
   // If there is corruption in the data, handle it in the FullMergeV2() function
   // and return false there.  The default implementation of PartialMerge will
   // always return false.
-  virtual bool PartialMerge(const Slice& /*key*/, const Slice& /*left_operand*/,
-                            const Slice& /*right_operand*/,
-                            std::string* /*new_value*/,
-                            Logger* /*logger*/) const {
+  virtual bool PartialMerge(const Slice& key, const Slice& left_operand,
+                            const Slice& right_operand, std::string* new_value,
+                            Logger* logger) const {
     return false;
   }
 
@@ -185,9 +186,9 @@ class MergeOperator {
 
   // Determines whether the MergeOperator can be called with just a single
   // merge operand.
-  // Override and return true for allowing a single operand. Both FullMergeV2
-  // and PartialMerge/PartialMergeMulti should be overridden and implemented
-  // correctly to handle a single operand.
+  // Override and return true for allowing a single operand. FullMergeV2 and
+  // PartialMerge/PartialMergeMulti should be implemented accordingly to handle
+  // a single operand.
   virtual bool AllowSingleOperand() const { return false; }
 
   // Allows to control when to invoke a full merge during Get.
@@ -195,7 +196,7 @@ class MergeOperator {
   // during a point lookup, thereby helping in limiting the number of levels to
   // read from.
   // Doesn't help with iterators.
-  virtual bool ShouldMerge(const std::vector<Slice>& /*operands*/) const {
+  virtual bool ShouldMerge(const std::vector<Slice>& operands) const {
     return false;
   }
 };

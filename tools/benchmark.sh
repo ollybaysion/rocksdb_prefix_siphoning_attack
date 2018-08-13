@@ -108,12 +108,14 @@ fi
 
 params_w="$const_params \
           $l0_config \
-          --max_background_jobs=20 \
-          --max_write_buffer_number=8"
+          --max_background_compactions=16 \
+          --max_write_buffer_number=8 \
+          --max_background_flushes=7"
 
 params_bulkload="$const_params \
-                 --max_background_jobs=20 \
+                 --max_background_compactions=16 \
                  --max_write_buffer_number=8 \
+                 --max_background_flushes=7 \
                  --level0_file_num_compaction_trigger=$((10 * M)) \
                  --level0_slowdown_writes_trigger=$((10 * M)) \
                  --level0_stop_writes_trigger=$((10 * M))"
@@ -124,14 +126,14 @@ params_bulkload="$const_params \
 # LSM. In level-based compaction, it means number of L0 files.
 #
 params_level_compact="$const_params \
-                --max_background_jobs=16 \
+                --max_background_flushes=4 \
                 --max_write_buffer_number=4 \
                 --level0_file_num_compaction_trigger=4 \
                 --level0_slowdown_writes_trigger=16 \
                 --level0_stop_writes_trigger=20"
 
 params_univ_compact="$const_params \
-                --max_background_jobs=20 \
+                --max_background_flushes=4 \
                 --max_write_buffer_number=4 \
                 --level0_file_num_compaction_trigger=8 \
                 --level0_slowdown_writes_trigger=16 \
@@ -230,7 +232,7 @@ function run_manual_compaction_worker {
        --subcompactions=$3 \
        --memtablerep=vector \
        --disable_wal=1 \
-       --max_background_jobs=$4 \
+       --max_background_compactions=$4 \
        --seed=$( date +%s ) \
        2>&1 | tee -a $fillrandom_output_file"
 
@@ -274,7 +276,7 @@ function run_univ_compaction {
 
   # Define a set of benchmarks.
   subcompactions=(1 2 4 8 16)
-  max_background_jobs=(20 20 10 5 4)
+  max_background_compactions=(16 16 8 4 2)
 
   i=0
   total=${#subcompactions[@]}
@@ -283,7 +285,7 @@ function run_univ_compaction {
   while [ "$i" -lt "$total" ]
   do
     run_manual_compaction_worker $io_stats $compaction_style ${subcompactions[$i]} \
-      ${max_background_jobs[$i]}
+      ${max_background_compactions[$i]}
     ((i++))
   done
 }
@@ -447,7 +449,6 @@ echo "===== Benchmark ====="
 
 # Run!!!
 IFS=',' read -a jobs <<< $1
-# shellcheck disable=SC2068
 for job in ${jobs[@]}; do
 
   if [ $job != debug ]; then

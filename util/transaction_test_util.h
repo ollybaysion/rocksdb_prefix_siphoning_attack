@@ -68,15 +68,8 @@ class RandomTransactionInserter {
   // Error status may be obtained by calling GetLastStatus().
   bool DBInsert(DB* db);
 
-  // Get the ikey'th key from set set_i
-  static Status DBGet(DB* db, Transaction* txn, ReadOptions& read_options,
-                      uint16_t set_i, uint64_t ikey, bool get_for_update,
-                      uint64_t* int_value, std::string* full_key,
-                      bool* unexpected_error);
-
   // Returns OK if Invariant is true.
-  static Status Verify(DB* db, uint16_t num_sets, uint64_t num_keys_per_set = 0,
-                       bool take_snapshot = false, Random64* rand = nullptr);
+  static Status Verify(DB* db, uint16_t num_sets);
 
   // Returns the status of the previous Insert operation
   Status GetLastStatus() { return last_status_; }
@@ -97,7 +90,7 @@ class RandomTransactionInserter {
   // Input options
   Random64* rand_;
   const WriteOptions write_options_;
-  ReadOptions read_options_;
+  const ReadOptions read_options_;
   const uint64_t num_keys_;
   const uint16_t num_sets_;
 

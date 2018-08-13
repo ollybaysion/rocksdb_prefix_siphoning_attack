@@ -19,8 +19,8 @@ class ColumnFamilyData;
 
 namespace rocksdb {
 
-class DBImpl;
 class MemTableList;
+class DBImpl;
 
 // Config for retrieving a property's value.
 struct DBPropertyInfo {
@@ -45,10 +45,6 @@ struct DBPropertyInfo {
 
   // @param props Map of general properties to populate
   bool (InternalStats::*handle_map)(std::map<std::string, std::string>* props);
-
-  // handle the string type properties rely on DBImpl methods
-  // @param value Value-result argument for storing the property's string value
-  bool (DBImpl::*handle_string_dbimpl)(std::string* value);
 };
 
 extern const DBPropertyInfo* GetPropertyInfo(const Slice& property);
@@ -167,10 +163,7 @@ class InternalStats {
     // Number of compactions done
     int count;
 
-    // Number of compactions done per CompactionReason
-    int counts[static_cast<int>(CompactionReason::kNumOfReasons)];
-
-    explicit CompactionStats()
+    explicit CompactionStats(int _count = 0)
         : micros(0),
           bytes_read_non_output_levels(0),
           bytes_read_output_level(0),
@@ -181,36 +174,7 @@ class InternalStats {
           num_output_files(0),
           num_input_records(0),
           num_dropped_records(0),
-          count(0) {
-      int num_of_reasons = static_cast<int>(CompactionReason::kNumOfReasons);
-      for (int i = 0; i < num_of_reasons; i++) {
-        counts[i] = 0;
-      }
-    }
-
-    explicit CompactionStats(CompactionReason reason, int c)
-        : micros(0),
-          bytes_read_non_output_levels(0),
-          bytes_read_output_level(0),
-          bytes_written(0),
-          bytes_moved(0),
-          num_input_files_in_non_output_levels(0),
-          num_input_files_in_output_level(0),
-          num_output_files(0),
-          num_input_records(0),
-          num_dropped_records(0),
-          count(c) {
-      int num_of_reasons = static_cast<int>(CompactionReason::kNumOfReasons);
-      for (int i = 0; i < num_of_reasons; i++) {
-        counts[i] = 0;
-      }
-      int r = static_cast<int>(reason);
-      if (r >= 0 && r < num_of_reasons) {
-        counts[r] = c;
-      } else {
-        count = 0;
-      }
-    }
+          count(_count) {}
 
     explicit CompactionStats(const CompactionStats& c)
         : micros(c.micros),
@@ -225,12 +189,7 @@ class InternalStats {
           num_output_files(c.num_output_files),
           num_input_records(c.num_input_records),
           num_dropped_records(c.num_dropped_records),
-          count(c.count) {
-      int num_of_reasons = static_cast<int>(CompactionReason::kNumOfReasons);
-      for (int i = 0; i < num_of_reasons; i++) {
-        counts[i] = c.counts[i];
-      }
-    }
+          count(c.count) {}
 
     void Clear() {
       this->micros = 0;
@@ -244,10 +203,6 @@ class InternalStats {
       this->num_input_records = 0;
       this->num_dropped_records = 0;
       this->count = 0;
-      int num_of_reasons = static_cast<int>(CompactionReason::kNumOfReasons);
-      for (int i = 0; i < num_of_reasons; i++) {
-        counts[i] = 0;
-      }
     }
 
     void Add(const CompactionStats& c) {
@@ -264,10 +219,6 @@ class InternalStats {
       this->num_input_records += c.num_input_records;
       this->num_dropped_records += c.num_dropped_records;
       this->count += c.count;
-      int num_of_reasons = static_cast<int>(CompactionReason::kNumOfReasons);
-      for (int i = 0; i< num_of_reasons; i++) {
-        counts[i] += c.counts[i];
-      }
     }
 
     void Subtract(const CompactionStats& c) {
@@ -284,10 +235,6 @@ class InternalStats {
       this->num_input_records -= c.num_input_records;
       this->num_dropped_records -= c.num_dropped_records;
       this->count -= c.count;
-      int num_of_reasons = static_cast<int>(CompactionReason::kNumOfReasons);
-      for (int i = 0; i < num_of_reasons; i++) {
-        counts[i] -= c.counts[i];
-      }
     }
   };
 
@@ -360,10 +307,6 @@ class InternalStats {
   bool GetIntPropertyOutOfMutex(const DBPropertyInfo& property_info,
                                 Version* version, uint64_t* value);
 
-  const std::vector<CompactionStats>& TEST_GetCompactionStats() const {
-    return comp_stats_;
-  }
-
   // Store a mapping from the user-facing DB::Properties string to our
   // DBPropertyInfo struct used internally for retrieving properties.
   static const std::unordered_map<std::string, DBPropertyInfo> ppt_name_to_info;
@@ -378,8 +321,6 @@ class InternalStats {
   void DumpCFStats(std::string* value);
   void DumpCFStatsNoFileHistogram(std::string* value);
   void DumpCFFileHistogram(std::string* value);
-
-  bool HandleBlockCacheStat(Cache** block_cache);
 
   // Per-DB stats
   std::atomic<uint64_t> db_stats_[INTERNAL_DB_STATS_ENUM_MAX];
@@ -409,7 +350,8 @@ class InternalStats {
     uint64_t ingest_keys_addfile;      // Total number of keys ingested
 
     CFStatsSnapshot()
-        : ingest_bytes_flush(0),
+        : comp_stats(0),
+          ingest_bytes_flush(0),
           stall_count(0),
           compact_bytes_write(0),
           compact_bytes_read(0),
@@ -525,7 +467,6 @@ class InternalStats {
                                     Version* version);
   bool HandleBaseLevel(uint64_t* value, DBImpl* db, Version* version);
   bool HandleTotalSstFilesSize(uint64_t* value, DBImpl* db, Version* version);
-  bool HandleLiveSstFilesSize(uint64_t* value, DBImpl* db, Version* version);
   bool HandleEstimatePendingCompactionBytes(uint64_t* value, DBImpl* db,
                                             Version* version);
   bool HandleEstimateTableReadersMem(uint64_t* value, DBImpl* db,
@@ -536,12 +477,7 @@ class InternalStats {
   bool HandleActualDelayedWriteRate(uint64_t* value, DBImpl* db,
                                     Version* version);
   bool HandleIsWriteStopped(uint64_t* value, DBImpl* db, Version* version);
-  bool HandleEstimateOldestKeyTime(uint64_t* value, DBImpl* db,
-                                   Version* version);
-  bool HandleBlockCacheCapacity(uint64_t* value, DBImpl* db, Version* version);
-  bool HandleBlockCacheUsage(uint64_t* value, DBImpl* db, Version* version);
-  bool HandleBlockCachePinnedUsage(uint64_t* value, DBImpl* db,
-                                   Version* version);
+
   // Total number of background errors encountered. Every time a flush task
   // or compaction task fails, this counter is incremented. The failure can
   // be caused by any possible reason, including file system errors, out of
@@ -589,7 +525,7 @@ class InternalStats {
     INTERNAL_DB_STATS_ENUM_MAX,
   };
 
-  InternalStats(int /*num_levels*/, Env* /*env*/, ColumnFamilyData* /*cfd*/) {}
+  InternalStats(int num_levels, Env* env, ColumnFamilyData* cfd) {}
 
   struct CompactionStats {
     uint64_t micros;
@@ -604,50 +540,48 @@ class InternalStats {
     uint64_t num_dropped_records;
     int count;
 
-    explicit CompactionStats() {}
+    explicit CompactionStats(int _count = 0) {}
 
-    explicit CompactionStats(CompactionReason /*reason*/, int /*c*/) {}
+    explicit CompactionStats(const CompactionStats& c) {}
 
-    explicit CompactionStats(const CompactionStats& /*c*/) {}
+    void Add(const CompactionStats& c) {}
 
-    void Add(const CompactionStats& /*c*/) {}
-
-    void Subtract(const CompactionStats& /*c*/) {}
+    void Subtract(const CompactionStats& c) {}
   };
 
-  void AddCompactionStats(int /*level*/, const CompactionStats& /*stats*/) {}
+  void AddCompactionStats(int level, const CompactionStats& stats) {}
 
-  void IncBytesMoved(int /*level*/, uint64_t /*amount*/) {}
+  void IncBytesMoved(int level, uint64_t amount) {}
 
-  void AddCFStats(InternalCFStatsType /*type*/, uint64_t /*value*/) {}
+  void AddCFStats(InternalCFStatsType type, uint64_t value) {}
 
-  void AddDBStats(InternalDBStatsType /*type*/, uint64_t /*value*/,
-                  bool /*concurrent */ = false) {}
+  void AddDBStats(InternalDBStatsType type, uint64_t value,
+                  bool concurrent = false) {}
 
-  HistogramImpl* GetFileReadHist(int /*level*/) { return nullptr; }
+  HistogramImpl* GetFileReadHist(int level) { return nullptr; }
 
   uint64_t GetBackgroundErrorCount() const { return 0; }
 
   uint64_t BumpAndGetBackgroundErrorCount() { return 0; }
 
-  bool GetStringProperty(const DBPropertyInfo& /*property_info*/,
-                         const Slice& /*property*/, std::string* /*value*/) {
+  bool GetStringProperty(const DBPropertyInfo& property_info,
+                         const Slice& property, std::string* value) {
     return false;
   }
 
-  bool GetMapProperty(const DBPropertyInfo& /*property_info*/,
-                      const Slice& /*property*/,
-                      std::map<std::string, std::string>* /*value*/) {
+  bool GetMapProperty(const DBPropertyInfo& property_info,
+                      const Slice& property,
+                      std::map<std::string, std::string>* value) {
     return false;
   }
 
-  bool GetIntProperty(const DBPropertyInfo& /*property_info*/, uint64_t* /*value*/,
-                      DBImpl* /*db*/) const {
+  bool GetIntProperty(const DBPropertyInfo& property_info, uint64_t* value,
+                      DBImpl* db) const {
     return false;
   }
 
-  bool GetIntPropertyOutOfMutex(const DBPropertyInfo& /*property_info*/,
-                                Version* /*version*/, uint64_t* /*value*/) const {
+  bool GetIntPropertyOutOfMutex(const DBPropertyInfo& property_info,
+                                Version* version, uint64_t* value) const {
     return false;
   }
 };

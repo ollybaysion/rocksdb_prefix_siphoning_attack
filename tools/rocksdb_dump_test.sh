@@ -1,4 +1,3 @@
-# shellcheck disable=SC2148
 TESTDIR=`mktemp -d ${TMPDIR:-/tmp}/rocksdb-dump-test.XXXXX`
 DUMPFILE="tools/sample-dump.dmp"
 

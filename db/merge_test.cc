@@ -20,17 +20,15 @@
 #include "utilities/merge_operators.h"
 #include "util/testharness.h"
 
-namespace rocksdb {
+using namespace rocksdb;
 
-bool use_compression;
-
-class MergeTest : public testing::Test {};
-
+namespace {
 size_t num_merge_operator_calls;
 void resetNumMergeOperatorCalls() { num_merge_operator_calls = 0; }
 
 size_t num_partial_merge_calls;
 void resetNumPartialMergeCalls() { num_partial_merge_calls = 0; }
+}
 
 class CountMergeOperator : public AssociativeMergeOperator {
  public:
@@ -76,6 +74,7 @@ class CountMergeOperator : public AssociativeMergeOperator {
   std::shared_ptr<MergeOperator> mergeOperator_;
 };
 
+namespace {
 std::shared_ptr<DB> OpenDb(const std::string& dbname, const bool ttl = false,
                            const size_t max_successive_merges = 0) {
   DB* db;
@@ -88,6 +87,7 @@ std::shared_ptr<DB> OpenDb(const std::string& dbname, const bool ttl = false,
 // DBWithTTL is not supported in ROCKSDB_LITE
 #ifndef ROCKSDB_LITE
   if (ttl) {
+    std::cout << "Opening database with TTL\n";
     DBWithTTL* db_with_ttl;
     s = DBWithTTL::Open(options, dbname, &db_with_ttl);
     db = db_with_ttl;
@@ -104,6 +104,7 @@ std::shared_ptr<DB> OpenDb(const std::string& dbname, const bool ttl = false,
   }
   return std::shared_ptr<DB>(db);
 }
+}  // namespace
 
 // Imagine we are maintaining a set of uint64 counters.
 // Each counter has a distinct name. And we would like
@@ -245,11 +246,12 @@ class MergeBasedCounters : public Counters {
   }
 };
 
+namespace {
 void dumpDb(DB* db) {
   auto it = unique_ptr<Iterator>(db->NewIterator(ReadOptions()));
   for (it->SeekToFirst(); it->Valid(); it->Next()) {
-    //uint64_t value = DecodeFixed64(it->value().data());
-    //std::cout << it->key().ToString() << ": " << value << std::endl;
+    uint64_t value = DecodeFixed64(it->value().data());
+    std::cout << it->key().ToString() << ": " << value << std::endl;
   }
   assert(it->status().ok());  // Check for any errors found during the scan
 }
@@ -279,6 +281,8 @@ void testCounters(Counters& counters, DB* db, bool test_compaction) {
 
   dumpDb(db);
 
+  std::cout << "1\n";
+
   // 1+...+49 = ?
   uint64_t sum = 0;
   for (int i = 1; i < 50; i++) {
@@ -287,12 +291,17 @@ void testCounters(Counters& counters, DB* db, bool test_compaction) {
   }
   assert(counters.assert_get("b") == sum);
 
+  std::cout << "2\n";
   dumpDb(db);
+
+  std::cout << "3\n";
 
   if (test_compaction) {
     db->Flush(o);
 
+    std::cout << "Compaction started ...\n";
     db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+    std::cout << "Compaction ended\n";
 
     dumpDb(db);
 
@@ -402,35 +411,44 @@ void testSingleBatchSuccessiveMerge(DB* db, size_t max_num_merges,
             static_cast<size_t>((num_merges % (max_num_merges + 1))));
 }
 
-void runTest(const std::string& dbname, const bool use_ttl = false) {
+void runTest(int argc, const std::string& dbname, const bool use_ttl = false) {
+  bool compact = false;
+  if (argc > 1) {
+    compact = true;
+    std::cout << "Turn on Compaction\n";
+  }
 
   {
     auto db = OpenDb(dbname, use_ttl);
 
     {
+      std::cout << "Test read-modify-write counters... \n";
       Counters counters(db, 0);
       testCounters(counters, db.get(), true);
     }
 
     {
+      std::cout << "Test merge-based counters... \n";
       MergeBasedCounters counters(db, 0);
-      testCounters(counters, db.get(), use_compression);
+      testCounters(counters, db.get(), compact);
     }
   }
 
   DestroyDB(dbname, Options());
 
   {
+    std::cout << "Test merge in memtable... \n";
     size_t max_merge = 5;
     auto db = OpenDb(dbname, use_ttl, max_merge);
     MergeBasedCounters counters(db, 0);
-    testCounters(counters, db.get(), use_compression);
+    testCounters(counters, db.get(), compact);
     testSuccessiveMerge(counters, max_merge, max_merge * 2);
     testSingleBatchSuccessiveMerge(db.get(), 5, 7);
     DestroyDB(dbname, Options());
   }
 
   {
+    std::cout << "Test Partial-Merge\n";
     size_t max_merge = 100;
     // Min merge is hard-coded to 2.
     uint32_t min_merge = 2;
@@ -450,6 +468,7 @@ void runTest(const std::string& dbname, const bool use_ttl = false) {
   }
 
   {
+    std::cout << "Test merge-operator not set after reopen\n";
     {
       auto db = OpenDb(dbname);
       MergeBasedCounters counters(db, 0);
@@ -483,27 +502,16 @@ void runTest(const std::string& dbname, const bool use_ttl = false) {
   }
   */
 }
+}  // namespace
 
-TEST_F(MergeTest, MergeDbTest) {
-  runTest(test::PerThreadDBPath("merge_testdb"));
-}
-
-#ifndef ROCKSDB_LITE
-TEST_F(MergeTest, MergeDbTtlTest) {
-  runTest(test::PerThreadDBPath("merge_testdbttl"),
-          true);  // Run test on TTL database
-}
-#endif  // !ROCKSDB_LITE
-
-}  // namespace rocksdb
-
-int main(int argc, char** argv) {
-  rocksdb::use_compression = false;
-  if (argc > 1) {
-    rocksdb::use_compression = true;
-  }
-
+int main(int argc, char *argv[]) {
+  //TODO: Make this test like a general rocksdb unit-test
   rocksdb::port::InstallStackTraceHandler();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  runTest(argc, test::TmpDir() + "/merge_testdb");
+// DBWithTTL is not supported in ROCKSDB_LITE
+#ifndef ROCKSDB_LITE
+  runTest(argc, test::TmpDir() + "/merge_testdbttl", true); // Run test on TTL database
+#endif  // !ROCKSDB_LITE
+  printf("Passed all tests!\n");
+  return 0;
 }

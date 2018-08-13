@@ -1,4 +1,3 @@
-# shellcheck disable=SC1113
 #/usr/bin/env bash
 
 set -e
@@ -29,14 +28,12 @@ function package() {
     if dpkg --get-selections | grep --quiet $1; then
       log "$1 is already installed. skipping."
     else
-      # shellcheck disable=SC2068
       apt-get install $@ -y
     fi
   elif [[ $OS = "centos" ]]; then
     if rpm -qa | grep --quiet $1; then
       log "$1 is already installed. skipping."
     else
-      # shellcheck disable=SC2068
       yum install $@ -y
     fi
   fi
@@ -55,7 +52,6 @@ function gem_install() {
   if gem list | grep --quiet $1; then
     log "$1 is already installed. skipping."
   else
-    # shellcheck disable=SC2068
     gem install $@
   fi
 }
@@ -129,5 +125,4 @@ function main() {
     include $LIB_DIR
 }
 
-# shellcheck disable=SC2068
 main $@

@@ -22,11 +22,6 @@
 #define ROCKSDB_FIELD_UNUSED
 #endif  // __clang__
 
-#ifndef STRINGIFY
-#define STRINGIFY(x) #x
-#define TOSTRING(x) STRINGIFY(x)
-#endif
-
 namespace rocksdb {
 
 enum TickersInternal : uint32_t {
@@ -38,6 +33,7 @@ enum HistogramsInternal : uint32_t {
   INTERNAL_HISTOGRAM_START = HISTOGRAM_ENUM_MAX,
   INTERNAL_HISTOGRAM_ENUM_MAX
 };
+
 
 class StatisticsImpl : public Statistics {
  public:
@@ -73,23 +69,18 @@ class StatisticsImpl : public Statistics {
   // cores can never share the same cache line.
   //
   // Alignment attributes expand to nothing depending on the platform
-  struct ALIGN_AS(CACHE_LINE_SIZE) StatisticsData {
+  struct StatisticsData {
     std::atomic_uint_fast64_t tickers_[INTERNAL_TICKER_ENUM_MAX] = {{0}};
     HistogramImpl histograms_[INTERNAL_HISTOGRAM_ENUM_MAX];
-#ifndef HAVE_ALIGNED_NEW
     char
         padding[(CACHE_LINE_SIZE -
                  (INTERNAL_TICKER_ENUM_MAX * sizeof(std::atomic_uint_fast64_t) +
                   INTERNAL_HISTOGRAM_ENUM_MAX * sizeof(HistogramImpl)) %
-                     CACHE_LINE_SIZE)] ROCKSDB_FIELD_UNUSED;
-#endif
-    void *operator new(size_t s) { return port::cacheline_aligned_alloc(s); }
-    void *operator new[](size_t s) { return port::cacheline_aligned_alloc(s); }
-    void operator delete(void *p) { port::cacheline_aligned_free(p); }
-    void operator delete[](void *p) { port::cacheline_aligned_free(p); }
+                     CACHE_LINE_SIZE) %
+                CACHE_LINE_SIZE] ROCKSDB_FIELD_UNUSED;
   };
 
-  static_assert(sizeof(StatisticsData) % CACHE_LINE_SIZE == 0, "Expected " TOSTRING(CACHE_LINE_SIZE) "-byte aligned");
+  static_assert(sizeof(StatisticsData) % 64 == 0, "Expected 64-byte aligned");
 
   CoreLocalArray<StatisticsData> per_core_stats_;
 

@@ -27,7 +27,7 @@ class FlushJobTest : public testing::Test {
  public:
   FlushJobTest()
       : env_(Env::Default()),
-        dbname_(test::PerThreadDBPath("flush_job_test")),
+        dbname_(test::TmpDir() + "/flush_job_test"),
         options_(),
         db_options_(options_),
         table_cache_(NewLRUCache(50000, 16)),
@@ -40,7 +40,6 @@ class FlushJobTest : public testing::Test {
     EXPECT_OK(env_->CreateDirIfMissing(dbname_));
     db_options_.db_paths.emplace_back(dbname_,
                                       std::numeric_limits<uint64_t>::max());
-    db_options_.statistics = rocksdb::CreateDBStatistics();
     // TODO(icanadi) Remove this once we mock out VersionSet
     NewDB();
     std::vector<ColumnFamilyDescriptor> column_families;
@@ -139,28 +138,21 @@ TEST_F(FlushJobTest, NonEmpty) {
 
   EventLogger event_logger(db_options_.info_log.get());
   SnapshotChecker* snapshot_checker = nullptr;  // not relavant
-  FlushJob flush_job(dbname_, versions_->GetColumnFamilySet()->GetDefault(),
-                     db_options_, *cfd->GetLatestMutableCFOptions(),
-                     env_options_, versions_.get(), &mutex_, &shutting_down_,
-                     {}, kMaxSequenceNumber, snapshot_checker, &job_context,
-                     nullptr, nullptr, nullptr, kNoCompression,
-                     db_options_.statistics.get(), &event_logger, true);
-
-  HistogramData hist;
-  FileMetaData file_meta;
+  FlushJob flush_job(
+      dbname_, versions_->GetColumnFamilySet()->GetDefault(), db_options_,
+      *cfd->GetLatestMutableCFOptions(), env_options_, versions_.get(), &mutex_,
+      &shutting_down_, {}, kMaxSequenceNumber, snapshot_checker, &job_context,
+      nullptr, nullptr, nullptr, kNoCompression, nullptr, &event_logger, true);
+  FileMetaData fd;
   mutex_.Lock();
   flush_job.PickMemTable();
-  ASSERT_OK(flush_job.Run(nullptr, &file_meta));
+  ASSERT_OK(flush_job.Run(&fd));
   mutex_.Unlock();
-  db_options_.statistics->histogramData(FLUSH_TIME, &hist);
-  ASSERT_GT(hist.average, 0.0);
-
-  ASSERT_EQ(ToString(0), file_meta.smallest.user_key().ToString());
-  ASSERT_EQ(
-      "9999a",
-      file_meta.largest.user_key().ToString());  // range tombstone end key
-  ASSERT_EQ(1, file_meta.fd.smallest_seqno);
-  ASSERT_EQ(10000, file_meta.fd.largest_seqno);  // range tombstone seqnum 10000
+  ASSERT_EQ(ToString(0), fd.smallest.user_key().ToString());
+  ASSERT_EQ("9999a",
+            fd.largest.user_key().ToString());  // range tombstone end key
+  ASSERT_EQ(1, fd.smallest_seqno);
+  ASSERT_EQ(10000, fd.largest_seqno);  // range tombstone seqnum 10000
   mock_table_factory_->AssertSingleFile(inserted_keys);
   job_context.Clean();
 }
@@ -218,15 +210,12 @@ TEST_F(FlushJobTest, Snapshots) {
                      env_options_, versions_.get(), &mutex_, &shutting_down_,
                      snapshots, kMaxSequenceNumber, snapshot_checker,
                      &job_context, nullptr, nullptr, nullptr, kNoCompression,
-                     db_options_.statistics.get(), &event_logger, true);
+                     nullptr, &event_logger, true);
   mutex_.Lock();
   flush_job.PickMemTable();
   ASSERT_OK(flush_job.Run());
   mutex_.Unlock();
   mock_table_factory_->AssertSingleFile(inserted_keys);
-  HistogramData hist;
-  db_options_.statistics->histogramData(FLUSH_TIME, &hist);
-  ASSERT_GT(hist.average, 0.0);
   job_context.Clean();
 }
 

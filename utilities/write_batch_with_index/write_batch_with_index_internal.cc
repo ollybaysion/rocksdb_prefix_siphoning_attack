@@ -71,16 +71,13 @@ Status ReadableWriteBatch::GetEntryFromDataOffset(size_t data_offset,
       break;
     case kTypeNoop:
     case kTypeBeginPrepareXID:
-    case kTypeBeginPersistedPrepareXID:
-    case kTypeBeginUnprepareXID:
     case kTypeEndPrepareXID:
     case kTypeCommitXID:
     case kTypeRollbackXID:
       *type = kXIDRecord;
       break;
     default:
-      return Status::Corruption("unknown WriteBatch tag ",
-                                ToString(static_cast<unsigned int>(tag)));
+      return Status::Corruption("unknown WriteBatch tag");
   }
   return Status::OK();
 }
