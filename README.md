@@ -26,15 +26,7 @@ down to 2GB datasets here (the 100GB configs are still included in
     python poisson.py
     mkdir data_no_filter data_bloom data_surf
 
-Run the executable **../build/filter_experiment/filter_experiment** will show the usage information:
-    Usage:
-    arg 1: path to datafiles
-    arg 2: filter type  0: no filter  1: Bloom filter  2: SuRF  3: SuRF Hash  4: SuRF Real
-    arg 3: compression? 0: no compression  1: Snappy
-    arg 4: use direct I/O?  0: no  1: yes
-    arg 5: query type  0: init  1: point query  2: open range query  3: closed range query
-    arg 6: range size
-    arg 7: warmup # of queries
+Run the executable **../build/filter_experiment/filter_experiment** will show the usage information.
 
 To initialize the RocksDB instances with no filter, bloom filters and SuRFs (with real suffixes):
 
