@@ -83,14 +83,14 @@ void init(const std::string& key_path, const std::string& db_path, rocksdb::DB**
     options->max_open_files = -1; // pre-load indexes and filters
 
     // 2GB config
-    //options->write_buffer_size = 2 * 1048576;
-    //options->max_bytes_for_level_base = 10 * 1048576;
-    //options->target_file_size_base = 2 * 1048576;
+    options->write_buffer_size = 2 * 1048576;
+    options->max_bytes_for_level_base = 10 * 1048576;
+    options->target_file_size_base = 2 * 1048576;
 
     // 100GB config
-    options->write_buffer_size = 64 * 1048576;
-    options->max_bytes_for_level_base = 256 * 1048576;
-    options->target_file_size_base = 64 * 1048576;
+    //options->write_buffer_size = 64 * 1048576;
+    //options->max_bytes_for_level_base = 256 * 1048576;
+    //options->target_file_size_base = 64 * 1048576;
 
     if (use_direct_io > 0)
 	options->use_direct_reads = true;
@@ -192,42 +192,7 @@ void testScan(const std::string& key_path, rocksdb::DB* db, uint64_t key_count) 
     std::cout << "elapsed:    " << (static_cast<double>(elapsed) / 1000000000.) << "\n";
     std::cout << "throughput: " << (static_cast<double>(key_count) / (static_cast<double>(elapsed) / 1000000000.)) << "\n";
 }
-/*
-void warmup(rocksdb::DB* db, uint64_t key_range, uint64_t query_count) {
-    struct timespec ts_start;
-    struct timespec ts_end;
-    uint64_t elapsed;
 
-    std::cout << "warming up\n";
-    clock_gettime(CLOCK_MONOTONIC, &ts_start);
-
-    for (uint64_t i = 0; i < query_count; i++) {
-	uint64_t key = key_range / query_count * i + 1;
-	key = htobe64(key);
-
-	rocksdb::Slice s_key(reinterpret_cast<const char*>(&key), sizeof(key));
-	std::string s_value;
-	uint64_t value;
-
-	rocksdb::Status status = db->Get(rocksdb::ReadOptions(), s_key, &s_value);
-
-	if (status.ok()) {
-	    assert(s_value.size() >= sizeof(uint64_t));
-	    value = *reinterpret_cast<const uint64_t*>(s_value.data());
-	    (void)value;
-	}
-    }
-    
-    clock_gettime(CLOCK_MONOTONIC, &ts_end);
-    elapsed = static_cast<uint64_t>(ts_end.tv_sec) * 1000000000UL +
-	static_cast<uint64_t>(ts_end.tv_nsec) -
-	static_cast<uint64_t>(ts_start.tv_sec) * 1000000000UL +
-	static_cast<uint64_t>(ts_start.tv_nsec);
-
-    std::cout << "elapsed:    " << (static_cast<double>(elapsed) / 1000000000.) << "\n";
-    std::cout << "throughput: " << (static_cast<double>(query_count) / (static_cast<double>(elapsed) / 1000000000.)) << "\n";
-}
-*/
 void warmup(const std::string key_path, uint64_t key_count, uint64_t sample_gap, rocksdb::DB* db) {
     std::ifstream keyFile(key_path);
     std::vector<uint64_t> keys;
@@ -360,17 +325,6 @@ void benchOpenRangeQuery(rocksdb::DB* db, rocksdb::Options* options, uint64_t ke
 	uint64_t j = 0;
 	for (it->Seek(s_key); it->Valid() && j < scan_length; it->Next(), j++) {
 	    uint64_t found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
-
-	    //std::cout << std::hex << found_key << std::dec << "========================================\n";
-
-	    //if (i < 20)
-	    //std::cout << std::hex << found_key << std::dec << "\n";
-	    /*
-	    for (int k = 0; k < 8; k++)
-		std::cout << std::hex << (uint16_t)it->key().data()[k] << " ";
-	    std::cout << std::dec << "\n";
-	    */
-	    
 	    assert(it->value().size() >= sizeof(uint64_t));
 	    value = *reinterpret_cast<const uint64_t*>(it->value().data());
 	    (void)value;
@@ -461,70 +415,8 @@ void benchClosedRangeQuery(rocksdb::DB* db, rocksdb::Options* options, uint64_t 
     std::cout << latencies;
 }
 
-/*
-void benchClosedRangeQuery(rocksdb::DB* db, uint64_t key_count, uint64_t key_gap,
-			   uint64_t query_count, uint64_t range_size) {
-    std::random_device rd;
-    std::mt19937_64 e(rd());
-    std::uniform_int_distribution<unsigned long long> dist(0, (key_count * key_gap));
-
-    std::vector<uint64_t> query_keys;
-
-    for (uint64_t i = 0; i < query_count; i++) {
-	uint64_t r = dist(e);
-	query_keys.push_back(r);
-    }
-
-    struct timespec ts_start;
-    struct timespec ts_end;
-    uint64_t elapsed;
-
-    printf("closed range query\n");
-    rocksdb::Iterator* it = db->NewIterator(rocksdb::ReadOptions());
-
-    clock_gettime(CLOCK_MONOTONIC, &ts_start);
-
-    uint64_t count = 0;
-    
-    for (uint64_t i = 0; i < query_count; i++) {
-	uint64_t key = query_keys[i];
-	key = htobe64(key);
-	rocksdb::Slice s_key(reinterpret_cast<const char*>(&key), sizeof(key));
-
-	uint64_t until_key = query_keys[i] + 1000000;
-	until_key = htobe64(until_key);
-	rocksdb::Slice s_until_key(reinterpret_cast<const char*>(&until_key), sizeof(until_key));
-	bool inclusive = false;
-	
-	std::string s_value;
-	uint64_t value;
-
-	uint64_t j = 0;
-	for (it->SeekUntil(s_key, s_until_key, inclusive); it->Valid(); it->Next(), j++) {
-	    uint64_t found_key = *reinterpret_cast<const uint64_t*>(it->key().data());
-	    if (be64toh(found_key) >= be64toh(until_key))
-		break;
-	    count++;
-	}
-    }
-
-    std::cout << "count per op = " << ((count + 0.0) / query_count) << "\n";
-    
-    clock_gettime(CLOCK_MONOTONIC, &ts_end);
-    elapsed = static_cast<uint64_t>(ts_end.tv_sec) * 1000000000UL +
-	static_cast<uint64_t>(ts_end.tv_nsec) -
-	static_cast<uint64_t>(ts_start.tv_sec) * 1000000000UL +
-	static_cast<uint64_t>(ts_start.tv_nsec);
-
-    std::cout << "elapsed:    " << (static_cast<double>(elapsed) / 1000000000.) << "\n";
-    std::cout << "throughput: " << (static_cast<double>(query_count) / (static_cast<double>(elapsed) / 1000000000.)) << "\n";
-
-    delete it;
-}
-*/
-
 void printIO() {
-    FILE* fp = fopen("/sys/block/sda/sda2/stat", "r");
+    FILE* fp = fopen("/sys/block/sda/sda1/stat", "r");
     if (fp == NULL) {
 	printf("Error: empty fp\n");
 	printf("%s\n", strerror(errno));
@@ -538,7 +430,7 @@ void printIO() {
 }
 
 uint64_t getIOCount() {
-    std::ifstream io_file(std::string("/sys/block/sda/sda2/stat"));
+    std::ifstream io_file(std::string("/sys/block/sda/sda1/stat"));
     uint64_t io_count = 0;
     io_file >> io_count;
     return io_count;
@@ -572,8 +464,8 @@ int main(int argc, const char* argv[]) {
 	std::cout << "\t0: no filter\n";
 	std::cout << "\t1: Bloom filter\n";
 	std::cout << "\t2: SuRF\n";
-	std::cout << "\t2: SuRF Hash\n";
-	std::cout << "\t2: SuRF Real\n";
+	std::cout << "\t3: SuRF Hash\n";
+	std::cout << "\t4: SuRF Real\n";
 	std::cout << "arg 3: compression?\n";
 	std::cout << "\t0: no compression\n";
 	std::cout << "\t1: Snappy\n";
@@ -581,9 +473,10 @@ int main(int argc, const char* argv[]) {
 	std::cout << "\t0: no\n";
 	std::cout << "\t1: yes\n";
 	std::cout << "arg 5: query type\n";
-	std::cout << "\t0: point query\n";
-	std::cout << "\t1: open range query\n";
-	std::cout << "\t2: closed range query\n";
+	std::cout << "\t0: init\n";
+	std::cout << "\t1: point query\n";
+	std::cout << "\t2: open range query\n";
+	std::cout << "\t3: closed range query\n";
 	std::cout << "arg 6: range size\n";
 	std::cout << "arg 7: warmup # of queries\n";
 	return -1;
@@ -597,20 +490,19 @@ int main(int argc, const char* argv[]) {
     uint64_t range_size = (uint64_t)atoi(argv[6]);
     uint64_t warmup_query_count = (uint64_t)atoi(argv[7]);
     uint64_t scan_length = 1;
-    //uint64_t range_size = 5000000;
 
-    const std::string kKeyPath = "/home/huanchen/rocksdb/filter_experiment/poisson_timestamps.csv";
+    const std::string kKeyPath = "poisson_timestamps.csv";
     const uint64_t kValueSize = 1000;
     const uint64_t kKeyRange = 10000000000000;
     const uint64_t kQueryCount = 50000;
     
     // 2GB config
-    //const uint64_t kKeyCount = 2000000;
-    //const uint64_t kWarmupSampleGap = 100;
+    const uint64_t kKeyCount = 2000000;
+    const uint64_t kWarmupSampleGap = 100;
 
     // 100GB config
-    const uint64_t kKeyCount = 100000000;
-    const uint64_t kWarmupSampleGap = kKeyCount / warmup_query_count;
+    //const uint64_t kKeyCount = 100000000;
+    //const uint64_t kWarmupSampleGap = kKeyCount / warmup_query_count;
 
     //=========================================================================
     
@@ -619,6 +511,9 @@ int main(int argc, const char* argv[]) {
     rocksdb::BlockBasedTableOptions table_options;
     
     init(kKeyPath, db_path, &db, &options, &table_options, use_direct_io, kKeyCount, kValueSize, filter_type, compression_type);
+
+    if (query_type == 0)
+	return 0;
 
     //=========================================================================
 
@@ -635,25 +530,25 @@ int main(int argc, const char* argv[]) {
     //std::cout << options.statistics->ToString() << "\n";
     //printIO();
 
-    uint64_t mem_free_after = getMemFree();
-    uint64_t mem_available_after = getMemAvailable();
-    std::cout << "Mem Free diff: " << (mem_free_before - mem_free_after) << "\n";
-    std::cout << "Mem Aavilable diff: " << (mem_available_before - mem_available_after) << "\n";
+    //uint64_t mem_free_after = getMemFree();
+    //uint64_t mem_available_after = getMemAvailable();
+    //std::cout << "Mem Free diff: " << (mem_free_before - mem_free_after) << "\n";
+    //std::cout << "Mem Aavilable diff: " << (mem_available_before - mem_available_after) << "\n";
 
     uint64_t io_before = getIOCount();
-    mem_free_before = getMemFree();
-    mem_available_before = getMemAvailable();
+    //mem_free_before = getMemFree();
+    //mem_available_before = getMemAvailable();
     
-    if (query_type == 0)
+    if (query_type == 1)
 	benchPointQuery(db, &options, kKeyRange, kQueryCount);
-    else if (query_type == 1)
-	benchOpenRangeQuery(db, &options, kKeyRange, kQueryCount, scan_length);
     else if (query_type == 2)
+	benchOpenRangeQuery(db, &options, kKeyRange, kQueryCount, scan_length);
+    else if (query_type == 3)
 	benchClosedRangeQuery(db, &options, kKeyRange, kQueryCount, range_size);
 
     uint64_t io_after = getIOCount();
-    mem_free_after = getMemFree();
-    mem_available_after = getMemAvailable();
+    //mem_free_after = getMemFree();
+    //mem_available_after = getMemAvailable();
     //std::cout << options.statistics->ToString() << "\n";
     //std::string stats;
     //db->GetProperty(rocksdb::Slice("rocksdb.stats"), &stats);
@@ -661,8 +556,8 @@ int main(int argc, const char* argv[]) {
     //printIO();
 
     std::cout << "I/O count: " << (io_after - io_before) << "\n";
-    std::cout << "Mem Free diff: " << (mem_free_before - mem_free_after) << "\n";
-    std::cout << "Mem Aavilable diff: " << (mem_available_before - mem_available_after) << "\n";
+    //std::cout << "Mem Free diff: " << (mem_free_before - mem_free_after) << "\n";
+    //std::cout << "Mem Aavilable diff: " << (mem_available_before - mem_available_after) << "\n";
 
     close(db);
 

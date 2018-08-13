@@ -35,8 +35,13 @@ public:
     }
 
     virtual Slice Finish(std::unique_ptr<const char[]>* buf) override {
-	surf::SuRF* filter = new surf::SuRF(keys_, include_dense_, sparse_dense_ratio_,
-					    suffix_type_, suffix_len_);
+	surf::SuRF* filter;
+	if (suffix_type_ == surf::SuffixType::kHash)
+	    filter = new surf::SuRF(keys_, include_dense_, sparse_dense_ratio_,
+				    suffix_type_, suffix_len_, 0);
+	else
+	    filter = new surf::SuRF(keys_, include_dense_, sparse_dense_ratio_,
+				    suffix_type_, 0, suffix_len_);
 	uint64_t size = filter->serializedSize();
 	char* data = filter->serialize();
 	filter->destroy();
@@ -121,9 +126,14 @@ public:
 	std::vector<std::string> keys_str;
 	for (size_t i = 0; i < (size_t)n; i++)
 	    keys_str.push_back(std::string(keys[i].data(), keys[i].size()));
-	
-	surf::SuRF* filter = new surf::SuRF(keys_str, include_dense_, sparse_dense_ratio_,
-					    suffix_type_, suffix_len_);
+
+	surf::SuRF* filter;
+	if (suffix_type_ == surf::SuffixType::kHash)
+	    filter = new surf::SuRF(keys_str, include_dense_, sparse_dense_ratio_,
+				    suffix_type_, suffix_len_, 0);
+	else
+	    filter = new surf::SuRF(keys_str, include_dense_, sparse_dense_ratio_,
+				    suffix_type_, 0, suffix_len_);
 	uint64_t size = filter->serializedSize();
 	char* data = filter->serialize();
 	dst->append(data, size);

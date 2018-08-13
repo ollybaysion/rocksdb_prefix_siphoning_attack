@@ -205,7 +205,8 @@ class BlockBasedTable : public TableReader {
 
   friend class PartitionIndexReader;
 
- protected:
+  //protected:
+ public:
   template <class TValue>
   struct CachableEntry;
   struct Rep;
