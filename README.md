@@ -1,4 +1,9 @@
 # RocksDB Equipped With SuRF
+In this repository, we integrate [SuRF](https://github.com/efficient/SuRF)
+into RocksDB. Please refer to our
+[SIGMOD paper](http://www.cs.cmu.edu/~huanche1/publications/surf_paper.pdf)
+for details.
+Most of the changes to the source code are marked with "*// huanchen*".
 
 ## Install Dependencies
     sudo apt-get install build-essential cmake libgtest.dev libsnappy-dev
