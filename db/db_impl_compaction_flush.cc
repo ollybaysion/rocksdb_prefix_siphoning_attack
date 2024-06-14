@@ -692,7 +692,7 @@ void DBImpl::NotifyOnCompactionCompleted(
         }
       }
     }
-    for (const auto newf : c->edit()->GetNewFiles()) {
+    for (const auto &newf : c->edit()->GetNewFiles()) {
       info.output_files.push_back(TableFileName(immutable_db_options_.db_paths,
                                                 newf.second.fd.GetNumber(),
                                                 newf.second.fd.GetPathId()));
