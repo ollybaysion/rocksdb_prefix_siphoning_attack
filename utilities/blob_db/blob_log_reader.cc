@@ -72,6 +72,7 @@ Status Reader::ReadRecord(BlobLogRecord* record, ReadLevel level,
     case kReadHeader:
       file_->Skip(kb_size);
       next_byte_ += kb_size;
+      __attribute__((fallthrough));
 
     case kReadHeaderKey:
       record->ResizeKeyBuffer(record->GetKeySize());
@@ -92,6 +93,7 @@ Status Reader::ReadRecord(BlobLogRecord* record, ReadLevel level,
 
       file_->Skip(record->GetBlobSize());
       next_byte_ += record->GetBlobSize();
+      __attribute__((fallthrough));
 
     case kReadHeaderKeyBlob:
       record->ResizeKeyBuffer(record->GetKeySize());

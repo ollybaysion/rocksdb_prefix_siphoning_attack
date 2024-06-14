@@ -44,6 +44,8 @@ struct FileDescriptor {
         packed_number_and_path_id(PackFileNumberAndPathId(number, path_id)),
         file_size(_file_size) {}
 
+  FileDescriptor(const FileDescriptor& fd) { *this = fd; }
+
   FileDescriptor& operator=(const FileDescriptor& fd) {
     table_reader = fd.table_reader;
     packed_number_and_path_id = fd.packed_number_and_path_id;
